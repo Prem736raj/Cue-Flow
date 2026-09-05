@@ -2273,22 +2273,11 @@ fun TeleprompterPlaybackDialog(
                                             IconButton(
                                                 onClick = {
                                                     if (!hasCameraPermission) {
-                                                        cameraPermissionLauncher.launch(
-                                                            arrayOf(
-                                                                android.Manifest.permission.CAMERA,
-                                                                android.Manifest.permission.RECORD_AUDIO
-                                                            )
-                                                        )
+                                                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                                    } else if (isRecording) {
+                                                        isRecording = false
                                                     } else {
-                                                        val usableSpace = context.filesDir.usableSpace
-                                                        if (!isRecording && usableSpace < 50 * 1024 * 1024) {
-                                                            storageWarningMessage = "Could not start recording because phone storage space is critically low (less than 50MB free)."
-                                                        } else {
-                                                            isRecording = !isRecording
-                                                            if (isRecording && !isPlaying) {
-                                                                isPlaying = true
-                                                            }
-                                                        }
+                                                        requestRecordingStart()
                                                     }
                                                 },
                                                 modifier = Modifier
