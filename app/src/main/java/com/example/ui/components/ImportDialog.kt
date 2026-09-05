@@ -1,23 +1,57 @@
 package com.example.ui.components
 
+import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -27,789 +61,498 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.ui.theme.*
+import com.example.ui.theme.CosmicBorder
+import com.example.ui.theme.CosmicSurface
+import com.example.ui.theme.CosmicSurfaceElevated
+import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.ElectricPurple
+import com.example.ui.theme.SlateTextMuted
+import com.example.ui.theme.SlateTextPrimary
+import com.example.ui.theme.SlateTextSecondary
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.jsoup.Jsoup
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
-import okhttp3.*
-import java.io.IOException
 
-private val okHttpClient = OkHttpClient()
+private const val MAX_TEXT_FILE_BYTES = 2L * 1024L * 1024L
+private const val MAX_PDF_FILE_BYTES = 8L * 1024L * 1024L
+private const val MAX_NETWORK_BYTES = 2L * 1024L * 1024L
+private const val MAX_IMPORTED_CHARACTERS = 500_000
+
+private class ImportTooLargeException(message: String) : IOException(message)
+
+private val importHttpClient = OkHttpClient.Builder()
+    .connectTimeout(12, TimeUnit.SECONDS)
+    .readTimeout(20, TimeUnit.SECONDS)
+    .callTimeout(30, TimeUnit.SECONDS)
+    .followRedirects(true)
+    .followSslRedirects(true)
+    .build()
+
+private fun Context.queryContentSize(uri: Uri): Long? {
+    return runCatching {
+        contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (index >= 0 && cursor.moveToFirst() && !cursor.isNull(index)) cursor.getLong(index) else null
+        }
+    }.getOrNull()
+}
+
+private fun readBytesWithLimit(input: InputStream, maxBytes: Long): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0L
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        total += count
+        if (total > maxBytes) {
+            throw ImportTooLargeException("The selected content is too large to import safely on this device.")
+        }
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
+}
+
+private fun validateImportedText(text: String): String {
+    val cleaned = text.replace("\u0000", "").trim()
+    if (cleaned.isBlank()) throw IOException("No readable text was found.")
+    if (cleaned.length > MAX_IMPORTED_CHARACTERS) {
+        throw ImportTooLargeException(
+            "This source contains more than ${MAX_IMPORTED_CHARACTERS / 1000}k characters. Split it into smaller scripts before importing.",
+        )
+    }
+    return cleaned
+}
+
+private fun extractArticleText(html: String): String {
+    val document = Jsoup.parse(html)
+    document.select(
+        "script,style,nav,footer,header,head,iframe,noscript,svg,aside,.sidebar,#sidebar,.menu,#menu,.comments,#comments,.ads,#ads",
+    ).remove()
+
+    val likelyContainers = document.select(
+        "article,[itemprop=articleBody],.post-content,.entry-content,main,#main,#content",
+    )
+    for (container in likelyContainers) {
+        val candidate = container.select("p,h1,h2,h3,h4,h5,h6")
+            .map { it.text().trim() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
+            .trim()
+        if (candidate.length >= 120) return candidate
+    }
+
+    val paragraphs = document.select("p")
+        .map { it.text().trim() }
+        .filter { it.length >= 15 }
+    if (paragraphs.isNotEmpty()) return paragraphs.joinToString("\n\n")
+
+    return document.body()?.text()?.trim().orEmpty()
+}
+
+private fun normalizedHttpsUrl(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.startsWith("http://", ignoreCase = true)) {
+        throw IOException("For privacy and integrity, CueFlow imports web content over HTTPS only.")
+    }
+    val candidate = if (trimmed.contains("://")) trimmed else "https://$trimmed"
+    val parsed = candidate.toHttpUrlOrNull() ?: throw IOException("Enter a valid web address.")
+    if (parsed.scheme != "https") throw IOException("Only HTTPS links are supported.")
+    return parsed.toString()
+}
+
+private fun fetchHttpsText(url: String): String {
+    val normalized = normalizedHttpsUrl(url)
+    val request = Request.Builder()
+        .url(normalized)
+        .header("User-Agent", "CueFlow/1.0 Android script importer")
+        .build()
+
+    importHttpClient.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) throw IOException("Server returned HTTP ${response.code}.")
+        if (response.request.url.scheme != "https") throw IOException("The server redirected to an insecure connection.")
+        val body = response.body ?: throw IOException("The server returned an empty response.")
+        val declaredLength = body.contentLength()
+        if (declaredLength > MAX_NETWORK_BYTES) {
+            throw ImportTooLargeException("The downloaded page is larger than 2 MB and was not imported.")
+        }
+        val bytes = body.byteStream().use { readBytesWithLimit(it, MAX_NETWORK_BYTES) }
+        return bytes.toString(Charsets.UTF_8)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportDialog(
     onDismiss: () -> Unit,
-    onImportText: (text: String, mode: String) -> Unit, // mode is either "append" or "replace"
+    onImportText: (text: String, mode: String) -> Unit,
     hasExistingText: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
-    // Screen navigation flow states
-    var activeImportType by remember { mutableStateOf<String?>(null) } // null (selection), "url", "gdoc"
-    var showConflictResolution by remember { mutableStateOf(false) }
-
-    // Data / Loading states
-    var importedContent by remember { mutableStateOf<String?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isPdfLoading by remember { mutableStateOf(false) }
-    var isWebLoading by remember { mutableStateOf(false) }
-    var largeFileWarningMessage by remember { mutableStateOf<String?>(null) }
-
-    // Forms input
+    var importMode by remember { mutableStateOf<String?>(null) }
     var inputUrl by remember { mutableStateOf("") }
+    var pendingContent by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
 
-    // File pick launcher for text files
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val text = inputStream.bufferedReader().use { it.readText() }
-                    if (text.isNotBlank()) {
-                        if (hasExistingText) {
-                            importedContent = text
-                            showConflictResolution = true
-                        } else {
-                            onImportText(text, "replace")
-                        }
-                    } else {
-                        errorMessage = "Selected text file is empty."
-                    }
-                }
-            } catch (e: Exception) {
-                errorMessage = "Failed to read text file: ${e.localizedMessage}"
-            }
+    fun finishImport(text: String) {
+        if (hasExistingText) {
+            pendingContent = text
+        } else {
+            onImportText(text, "replace")
         }
     }
 
-    // PDF pick launcher
-    val pdfPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            isPdfLoading = true
-            errorMessage = null
-            largeFileWarningMessage = null
-            
-            // Query file size to alert user if it is a large document
-            var fileSize = -1L
-            try {
-                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    val sizeIdx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                    if (sizeIdx != -1 && cursor.moveToFirst()) {
-                        fileSize = cursor.getLong(sizeIdx)
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            
-            if (fileSize > 4 * 1024 * 1024) { // over 4MB
-                val sizeInMb = String.format("%.1f", fileSize.toFloat() / (1024 * 1024))
-                largeFileWarningMessage = "This PDF document is quite large ($sizeInMb MB). Resolving pages may take a few moments..."
-            }
-            
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    // Initialize PDFBox once in app lifetime or as needed if rendering. We are only extracting plain text, so initialization is non-blocking.
-                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                        val document = PDDocument.load(inputStream)
-                        val stripper = PDFTextStripper()
-                        // Automatically handles multi-page PDFs by combining pages sequentially
-                        val text = stripper.getText(document)
-                        document.close()
-
-                        withContext(Dispatchers.Main) {
-                            isPdfLoading = false
-                            if (!text.isNullOrBlank()) {
-                                if (hasExistingText) {
-                                    importedContent = text
-                                    showConflictResolution = true
-                                } else {
-                                    onImportText(text, "replace")
-                                }
-                            } else {
-                                errorMessage = "This file appears to be empty. We couldn't find any readable text in this document."
-                            }
-                        }
-                    }
-                } catch (e: Throwable) {
-                    withContext(Dispatchers.Main) {
-                        isPdfLoading = false
-                        errorMessage = "Oops! We couldn't read this file. It might be corrupted, secure/password-protected, or formatted in an unreadable layout. Please try another PDF file."
-                    }
-                }
-            }
+    fun showError(error: Throwable, fallback: String) {
+        errorMessage = when (error) {
+            is ImportTooLargeException -> error.message
+            else -> error.message?.takeIf { it.isNotBlank() } ?: fallback
         }
     }
 
-    // Web Article crawler parser
-    fun extractArticleContent(html: String): String {
-        val doc = Jsoup.parse(html)
-        // Remove junk elements that introduce menus, footer, scripts, navigation, ads
-        doc.select("script, style, nav, footer, header, head, iframe, noscript, svg, .sidebar, #sidebar, .menu, #menu, .footer, #footer, .header, #header, .nav, #nav, .comments, #comments, .ads, #ads, advertising").remove()
-
-        // Seek typical main content wrappers
-        val articleElements = doc.select("article, [itemprop=articleBody], .post-content, .entry-content, main, #main, #content")
-        if (articleElements.isNotEmpty()) {
-            for (container in articleElements) {
-                val elements = container.select("p, h1, h2, h3, h4, h5, h6")
-                val textContent = elements.joinToString("\n\n") { it.text().trim() }.trim()
-                if (textContent.length > 120) {
-                    return textContent
-                }
-            }
-        }
-
-        // Dropback 1: Collect any readable paragraphs that are non-empty
-        val paragraphs = doc.select("p").map { it.text().trim() }.filter { it.length > 15 }
-        if (paragraphs.isNotEmpty()) {
-            return paragraphs.joinToString("\n\n")
-        }
-
-        // Dropback 2: Raw body text stripped
-        return doc.body()?.text()?.trim() ?: ""
-    }
-
-    // Process generic Web Link
-    fun handleUrlImport() {
-        val url = inputUrl.trim()
-        if (url.isBlank()) {
-            errorMessage = "Please enter a valid URL."
-            return
-        }
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            errorMessage = "URL must start with http:// or https://"
-            return
-        }
-
-        isWebLoading = true
+    val textPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isLoading = true
         errorMessage = null
-
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
-            .build()
-
-        okHttpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                coroutineScope.launch(Dispatchers.Main) {
-                    isWebLoading = false
-                    errorMessage = "Web importing requires an active internet connection. All other core features of CueFlow operate fully offline, so your scripts, sandboxes, and teleprompter playback can be used anytime!"
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                coroutineScope.launch(Dispatchers.Main) {
-                    isWebLoading = false
-                    response.use {
-                        if (!response.isSuccessful) {
-                            errorMessage = "Failed to fetch page. Server error: ${response.code}"
-                            return@use
-                        }
-                        val bodyHtml = response.body?.string()
-                        if (bodyHtml.isNullOrBlank()) {
-                            errorMessage = "Page returned successfully but contains no data."
-                            return@use
-                        }
-
-                        try {
-                            val extractedText = extractArticleContent(bodyHtml)
-                            if (extractedText.isBlank()) {
-                                errorMessage = "Could not extract any readable article paragraphs from this URL."
-                            } else {
-                                if (hasExistingText) {
-                                    importedContent = extractedText
-                                    showConflictResolution = true
-                                    activeImportType = null
-                                } else {
-                                    onImportText(extractedText, "replace")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            errorMessage = "Crawl parsing error: ${e.localizedMessage}"
-                        }
+        scope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) {
+                    val declaredSize = context.queryContentSize(uri)
+                    if (declaredSize != null && declaredSize > MAX_TEXT_FILE_BYTES) {
+                        throw ImportTooLargeException("Text files larger than 2 MB are not imported to protect memory on lower-end devices.")
                     }
+                    val bytes = context.contentResolver.openInputStream(uri)?.use {
+                        readBytesWithLimit(it, MAX_TEXT_FILE_BYTES)
+                    } ?: throw IOException("The selected file could not be opened.")
+                    validateImportedText(bytes.toString(Charsets.UTF_8))
                 }
+                finishImport(text)
+            } catch (error: Throwable) {
+                showError(error, "The selected text file could not be read.")
+            } finally {
+                isLoading = false
             }
-        })
+        }
     }
 
-    // Process Google Doc plain text export helper
-    fun handleGoogleDocImport() {
-        val url = inputUrl.trim()
-        if (url.isBlank()) {
-            errorMessage = "Please enter a Google Docs link."
-            return
-        }
-
-        // Match Google Doc ID from typical link structures
-        val docIdPattern = "document/d/([a-zA-Z0-9-_]+)".toRegex()
-        val matchResult = docIdPattern.find(url)
-        val docId = matchResult?.groupValues?.get(1)
-
-        if (docId == null) {
-            errorMessage = "Invalid Google Doc format. Make sure you copy a standard document sharing link."
-            return
-        }
-
-        isWebLoading = true
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isLoading = true
         errorMessage = null
+        scope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) {
+                    val declaredSize = context.queryContentSize(uri)
+                    if (declaredSize != null && declaredSize > MAX_PDF_FILE_BYTES) {
+                        throw ImportTooLargeException("PDF files larger than 8 MB are not imported on-device. Split the PDF and try again.")
+                    }
+                    val pdfBytes = context.contentResolver.openInputStream(uri)?.use {
+                        readBytesWithLimit(it, MAX_PDF_FILE_BYTES)
+                    } ?: throw IOException("The selected PDF could not be opened.")
 
-        // Convert sharing link directly to official plain text download export endpoint!
-        val exportUrl = "https://docs.google.com/document/d/$docId/export?format=txt"
-        val request = Request.Builder()
-            .url(exportUrl)
-            .build()
-
-        okHttpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                coroutineScope.launch(Dispatchers.Main) {
-                    isWebLoading = false
-                    errorMessage = "Failed to download Google Doc. Requires internet connection: ${e.localizedMessage}"
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                coroutineScope.launch(Dispatchers.Main) {
-                    isWebLoading = false
-                    response.use {
-                        if (response.code == 404) {
-                            errorMessage = "Document not found. Ensure link is correct and doc is accessible."
-                            return@use
-                        }
-                        if (!response.isSuccessful) {
-                            errorMessage = "Document retrieval failed. Verify Doc privacy is set to 'Anyone with the link can view'."
-                            return@use
-                        }
-                        val bodyText = response.body?.string()
-                        if (bodyText.isNullOrBlank()) {
-                            errorMessage = "Successfully loaded document but it appears to contain no text."
-                        } else {
-                            if (hasExistingText) {
-                                importedContent = bodyText
-                                showConflictResolution = true
-                                activeImportType = null
-                            } else {
-                                onImportText(bodyText, "replace")
-                            }
-                        }
+                    PDFBoxResourceLoader.init(context.applicationContext)
+                    PDDocument.load(pdfBytes).use { document ->
+                        validateImportedText(PDFTextStripper().getText(document))
                     }
                 }
+                finishImport(text)
+            } catch (error: Throwable) {
+                showError(
+                    error,
+                    "This PDF could not be read. It may be password-protected, corrupted, image-only, or unsupported.",
+                )
+            } finally {
+                isLoading = false
             }
-        })
+        }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    fun importWebArticle() {
+        if (inputUrl.isBlank()) {
+            errorMessage = "Enter an HTTPS web address."
+            return
+        }
+        isLoading = true
+        errorMessage = null
+        scope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) {
+                    val html = fetchHttpsText(inputUrl)
+                    validateImportedText(extractArticleText(html))
+                }
+                finishImport(text)
+                importMode = null
+            } catch (error: Throwable) {
+                showError(error, "The page could not be imported.")
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun importGoogleDoc() {
+        if (inputUrl.isBlank()) {
+            errorMessage = "Paste a Google Docs sharing link."
+            return
+        }
+        isLoading = true
+        errorMessage = null
+        scope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) {
+                    val normalized = normalizedHttpsUrl(inputUrl)
+                    val parsed = normalized.toHttpUrlOrNull() ?: throw IOException("Invalid Google Docs link.")
+                    if (!parsed.host.equals("docs.google.com", ignoreCase = true)) {
+                        throw IOException("Use a docs.google.com document link.")
+                    }
+                    val docId = Regex("/document/d/([A-Za-z0-9_-]+)")
+                        .find(parsed.encodedPath)
+                        ?.groupValues
+                        ?.getOrNull(1)
+                        ?: throw IOException("The Google Docs document ID could not be found in this link.")
+                    val exportUrl = "https://docs.google.com/document/d/$docId/export?format=txt"
+                    validateImportedText(fetchHttpsText(exportUrl))
+                }
+                finishImport(text)
+                importMode = null
+            } catch (error: Throwable) {
+                showError(
+                    error,
+                    "The Google Doc could not be downloaded. Make sure the document can be viewed by anyone with the link.",
+                )
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = { if (!isLoading) onDismiss() }) {
         Card(
             modifier = modifier
                 .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    brush = Brush.linearGradient(listOf(ElectricPurple.copy(alpha = 0.8f), ElectricCyan.copy(alpha = 0.5f))),
-                    shape = RoundedCornerShape(24.dp)
-                )
+                .heightIn(max = 680.dp)
+                .border(1.dp, CosmicBorder, RoundedCornerShape(22.dp))
                 .testTag("import_source_dialog"),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = CosmicSurfaceElevated
-            )
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = CosmicSurfaceElevated),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // Top Header Row with Close / Back Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (activeImportType != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (importMode != null) {
                             IconButton(
                                 onClick = {
-                                    activeImportType = null
-                                    errorMessage = null
+                                    importMode = null
                                     inputUrl = ""
+                                    errorMessage = null
                                 },
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .background(CosmicSurface, RoundedCornerShape(10.dp))
+                                enabled = !isLoading,
+                                modifier = Modifier.size(48.dp),
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowBack,
-                                    contentDescription = "Back to selection",
-                                    tint = SlateTextPrimary,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                             }
                         }
                         Text(
-                            text = when {
-                                showConflictResolution -> "Conflict Options"
-                                activeImportType == "url" -> "Import Web Page"
-                                activeImportType == "gdoc" -> "Import Google Doc"
-                                else -> "Import Script Source"
+                            text = when (importMode) {
+                                "web" -> "Import web article"
+                                "gdoc" -> "Import Google Doc"
+                                else -> "Import script"
                             },
+                            color = SlateTextPrimary,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = SlateTextPrimary
                         )
                     }
-
                     IconButton(
                         onClick = onDismiss,
+                        enabled = !isLoading,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close import dialog", tint = SlateTextSecondary)
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Row(
                         modifier = Modifier
-                            .size(36.dp)
-                            .background(CosmicSurface, RoundedCornerShape(10.dp))
+                            .fillMaxWidth()
+                            .background(Color(0xFFEF4444).copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                            .testTag("import_error_banner"),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close dialog",
-                            tint = SlateTextSecondary,
-                            modifier = Modifier.size(16.dp)
+                            Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = errorMessage.orEmpty(),
+                            color = Color(0xFFFFB4AB),
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
 
-                // Error Messages Display
-                if (errorMessage != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFEF4444).copy(alpha = 0.15f))
-                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                            .padding(12.dp)
-                            .testTag("import_error_banner")
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Error icon",
-                                tint = Color(0xFFEF4444),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = errorMessage ?: "",
-                                color = Color(0xFFEF4444),
-                                fontSize = 12.sp,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-
-                // Loader feedback states
-                if (isPdfLoading || isWebLoading) {
+                if (pendingContent != null) {
+                    ConflictResolution(
+                        characterCount = pendingContent.orEmpty().length,
+                        onAppend = {
+                            onImportText(pendingContent.orEmpty(), "append")
+                            pendingContent = null
+                        },
+                        onReplace = {
+                            onImportText(pendingContent.orEmpty(), "replace")
+                            pendingContent = null
+                        },
+                        onCancel = { pendingContent = null },
+                    )
+                } else if (isLoading) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
+                            .height(220.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.Center,
                     ) {
-                        LinearProgressIndicator(
-                            color = ElectricCyan,
-                            trackColor = CosmicBorder,
-                            modifier = Modifier
-                                .fillMaxWidth(0.8f)
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .testTag("import_loading_indicator")
-                        )
+                        CircularProgressIndicator(color = ElectricCyan)
+                        Spacer(Modifier.height(14.dp))
+                        Text("Reading source safely…", color = SlateTextSecondary, fontSize = 13.sp)
+                    }
+                } else if (importMode == null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
                         Text(
-                            text = if (isPdfLoading) "Extracting text pages from PDF... 📖" else "Fetching and parsing webpage contents... 🌐",
+                            "Files are processed on this device. Web and Google Docs imports use the internet only when you choose them.",
                             color = SlateTextSecondary,
                             fontSize = 12.sp,
-                            textAlign = TextAlign.Center
+                            lineHeight = 17.sp,
                         )
-                        if (isPdfLoading && largeFileWarningMessage != null) {
-                            Text(
-                                text = largeFileWarningMessage ?: "",
-                                color = ElectricPurple,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
+
+                        ImportSourceButton(
+                            icon = Icons.Default.ContentPaste,
+                            title = "Paste from clipboard",
+                            subtitle = "Fastest for text copied from Notes, Docs, or a browser",
+                            testTag = "import_clipboard_button",
+                        ) {
+                            val text = clipboardManager.getText()?.text.orEmpty()
+                            runCatching { validateImportedText(text) }
+                                .onSuccess(::finishImport)
+                                .onFailure { showError(it, "Clipboard does not contain readable text.") }
                         }
-                    }
-                } else if (!showConflictResolution) {
-                    // MAIN ACTION FLOWS
-                    when (activeImportType) {
-                        null -> {
-                            // Display Root choices list
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = "Choose an input source. All text is imported into the Sandbox so you can review and tweak it before saving.",
-                                    fontSize = 12.sp,
-                                    color = SlateTextSecondary,
-                                    lineHeight = 16.sp
-                                )
-
-                                // 0. BLANK SCRIPT
-                                ImportSourceOptionCard(
-                                    title = "Create Blank Script",
-                                    description = "Start with a clean slate and type your own content",
-                                    icon = Icons.Default.Edit,
-                                    iconColor = ElectricPurple,
-                                    testTag = "import_option_blank",
-                                    onClick = {
-                                        onDismiss()
-                                        onImportText("", "replace")
-                                    }
-                                )
-
-                                // 1. CLIPBOARD
-                                ImportSourceOptionCard(
-                                    title = "Paste From Clipboard",
-                                    description = "Instantly load what you copied from another application",
-                                    icon = Icons.Default.ContentPaste,
-                                    iconColor = ElectricPurple,
-                                    testTag = "import_option_clipboard",
-                                    onClick = {
-                                        try {
-                                            val text = clipboardManager.getText()?.text
-                                            if (!text.isNullOrBlank()) {
-                                                if (hasExistingText) {
-                                                    importedContent = text
-                                                    showConflictResolution = true
-                                                } else {
-                                                    onImportText(text, "replace")
-                                                }
-                                            } else {
-                                                errorMessage = "Clipboard is empty. Copy script content first!"
-                                            }
-                                        } catch (e: Exception) {
-                                            errorMessage = "Could not access clipboard: ${e.localizedMessage}"
-                                        }
-                                    }
-                                )
-
-                                // 2. TXT FILE PICKER
-                                ImportSourceOptionCard(
-                                    title = "Browse Text Files (.txt)",
-                                    description = "Upload raw .txt document from your device storage",
-                                    icon = Icons.Default.FolderOpen,
-                                    iconColor = ElectricCyan,
-                                    testTag = "import_option_file",
-                                    onClick = { filePickerLauncher.launch("text/plain") }
-                                )
-
-                                // 3. PDF FILE PICKER
-                                ImportSourceOptionCard(
-                                    title = "Browse PDF Files (.pdf)",
-                                    description = "Extract and combine all text pages from a PDF document",
-                                    icon = Icons.Default.Description,
-                                    iconColor = WarmAmber,
-                                    testTag = "import_option_pdf",
-                                    onClick = { pdfPickerLauncher.launch("application/pdf") }
-                                )
-
-                                // 4. URL WEB ARTICLES
-                                ImportSourceOptionCard(
-                                    title = "Import Web Article (URL)",
-                                    description = "Fetch article paragraphs cleanly from some blog/news. 🌐 Online only",
-                                    icon = Icons.Default.Language,
-                                    iconColor = Color(0xFF10B981), // Emerald Green
-                                    testTag = "import_option_url",
-                                    onClick = {
-                                        activeImportType = "url"
-                                        errorMessage = null
-                                    }
-                                )
-
-                                // 5. GOOGLE DOCS IMPORT
-                                ImportSourceOptionCard(
-                                    title = "Import Google Docs",
-                                    description = "Pull document text via Doc Sharing Link. 🌐 Online only",
-                                    icon = Icons.Default.CloudDownload,
-                                    iconColor = Color(0xFF3B82F6), // Blue Accent
-                                    testTag = "import_option_gdoc",
-                                    onClick = {
-                                        activeImportType = "gdoc"
-                                        errorMessage = null
-                                    }
-                                )
-                            }
+                        ImportSourceButton(
+                            icon = Icons.Default.Description,
+                            title = "Text file",
+                            subtitle = "TXT and other plain-text files up to 2 MB",
+                            testTag = "import_text_file_button",
+                        ) { textPicker.launch("text/*") }
+                        ImportSourceButton(
+                            icon = Icons.Default.PictureAsPdf,
+                            title = "PDF",
+                            subtitle = "Text-based PDFs up to 8 MB; scanned-image PDFs need OCR elsewhere",
+                            testTag = "import_pdf_button",
+                        ) { pdfPicker.launch("application/pdf") }
+                        ImportSourceButton(
+                            icon = Icons.Default.Article,
+                            title = "Web article",
+                            subtitle = "Fetch readable text over HTTPS",
+                            testTag = "import_web_button",
+                        ) {
+                            importMode = "web"
+                            errorMessage = null
                         }
-                        "url" -> {
-                            // URL Subscreen
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(ElectricCyan.copy(alpha = 0.05f))
-                                        .border(1.dp, ElectricCyan.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                        .padding(12.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Language,
-                                            contentDescription = "Internet network notice",
-                                            tint = ElectricCyan,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Column {
-                                            Text(
-                                                text = "Requires Internet Connection",
-                                                color = ElectricCyan,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp
-                                            )
-                                            Text(
-                                                text = "The app needs online access to fetch and strip menus/ads from the blog page.",
-                                                color = SlateTextSecondary,
-                                                fontSize = 11.sp,
-                                                lineHeight = 14.sp
-                                            )
-                                        }
-                                    }
-                                }
-
-                                OutlinedTextField(
-                                    value = inputUrl,
-                                    onValueChange = { inputUrl = it },
-                                    label = { Text("Web Article or Blog URL", color = SlateTextSecondary) },
-                                    placeholder = { Text("https://example.com/blog-post", color = SlateTextSecondary.copy(alpha = 0.5f)) },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("url_import_input"),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = ElectricCyan,
-                                        unfocusedBorderColor = CosmicBorder,
-                                        focusedLabelColor = ElectricCyan,
-                                        unfocusedLabelColor = SlateTextSecondary,
-                                        focusedTextColor = SlateTextPrimary,
-                                        unfocusedTextColor = SlateTextPrimary,
-                                        focusedContainerColor = CosmicSurface,
-                                        unfocusedContainerColor = CosmicSurface
-                                    )
-                                )
-
-                                Button(
-                                    onClick = { handleUrlImport() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                    contentPadding = PaddingValues(),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .testTag("url_import_button")
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Brush.linearGradient(listOf(ElectricPurple, DeepViolet))),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("Extract & Review Script", fontWeight = FontWeight.Bold, color = CosmicBackground, fontSize = 14.sp)
-                                    }
-                                }
-                            }
-                        }
-                        "gdoc" -> {
-                            // Google Docs subscreen
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(ElectricCyan.copy(alpha = 0.05f))
-                                        .border(1.dp, ElectricCyan.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                        .padding(12.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudDownload,
-                                            contentDescription = "Google doc online notice",
-                                            tint = ElectricCyan,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Column {
-                                            Text(
-                                                text = "Docs Link: Requires Internet",
-                                                color = ElectricCyan,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp
-                                            )
-                                            Text(
-                                                text = "Make sure your Google Doc has sharing set to: 'Anyone with the link can view' so the app can sync and export plain text.",
-                                                color = SlateTextSecondary,
-                                                fontSize = 11.sp,
-                                                lineHeight = 14.sp
-                                            )
-                                        }
-                                    }
-                                }
-
-                                OutlinedTextField(
-                                    value = inputUrl,
-                                    onValueChange = { inputUrl = it },
-                                    label = { Text("Google Doc Link", color = SlateTextSecondary) },
-                                    placeholder = { Text("https://docs.google.com/document/d/.../edit?usp=sharing", color = SlateTextSecondary.copy(alpha = 0.5f)) },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("gdoc_import_input"),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = ElectricCyan,
-                                        unfocusedBorderColor = CosmicBorder,
-                                        focusedLabelColor = ElectricCyan,
-                                        unfocusedLabelColor = SlateTextSecondary,
-                                        focusedTextColor = SlateTextPrimary,
-                                        unfocusedTextColor = SlateTextPrimary,
-                                        focusedContainerColor = CosmicSurface,
-                                        unfocusedContainerColor = CosmicSurface
-                                    )
-                                )
-
-                                Button(
-                                    onClick = { handleGoogleDocImport() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                    contentPadding = PaddingValues(),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .testTag("gdoc_import_button")
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Brush.linearGradient(listOf(ElectricPurple, DeepViolet))),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("Download & Review Script", fontWeight = FontWeight.Bold, color = CosmicBackground, fontSize = 14.sp)
-                                    }
-                                }
-                            }
+                        ImportSourceButton(
+                            icon = Icons.Default.Language,
+                            title = "Google Docs",
+                            subtitle = "Imports a link-accessible document as plain text",
+                            testTag = "import_gdoc_button",
+                        ) {
+                            importMode = "gdoc"
+                            errorMessage = null
                         }
                     }
                 } else {
-                    // CONFLICT RESOLUTION UI
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(WarmAmber.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = "Attention Icon",
-                                tint = WarmAmber,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
                         Text(
-                            text = "Conflict Detected",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SlateTextPrimary
-                        )
-
-                        Text(
-                            text = "You already have drafting content in this script. Do you want to append the imported text to the end, or completely replace the existing text?",
-                            fontSize = 13.sp,
+                            if (importMode == "gdoc") {
+                                "Paste a docs.google.com link. The document must be accessible through the link."
+                            } else {
+                                "Paste an HTTPS page. CueFlow downloads at most 2 MB and extracts readable article text."
+                            },
                             color = SlateTextSecondary,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 18.sp
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
                         )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        OutlinedTextField(
+                            value = inputUrl,
+                            onValueChange = { inputUrl = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("import_url_input"),
+                            label = { Text(if (importMode == "gdoc") "Google Docs link" else "HTTPS URL") },
+                            placeholder = {
+                                Text(
+                                    if (importMode == "gdoc") "https://docs.google.com/document/d/…" else "https://example.com/article",
+                                )
+                            },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = SlateTextPrimary,
+                                unfocusedTextColor = SlateTextPrimary,
+                                focusedBorderColor = ElectricPurple,
+                                unfocusedBorderColor = CosmicBorder,
+                                focusedLabelColor = ElectricPurple,
+                                unfocusedLabelColor = SlateTextMuted,
+                            ),
+                        )
+                        Button(
+                            onClick = if (importMode == "gdoc") ::importGoogleDoc else ::importWebArticle,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("import_url_confirm_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = ElectricPurple),
+                            shape = RoundedCornerShape(12.dp),
                         ) {
-                            OutlinedButton(
-                                onClick = {
-                                    importedContent?.let { onImportText(it, "append") }
-                                },
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = SlateTextPrimary
-                                ),
-                                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                                    brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                                    .testTag("resolve_import_append"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Append", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            }
-
-                            Button(
-                                onClick = {
-                                    importedContent?.let { onImportText(it, "replace") }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.Transparent
-                                ),
-                                contentPadding = PaddingValues(),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .testTag("resolve_import_replace"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Brush.linearGradient(listOf(ElectricPurple, DeepViolet))),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("Replace", fontWeight = FontWeight.Bold, color = CosmicBackground, fontSize = 13.sp)
-                                }
-                            }
+                            Text("Import text", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -819,56 +562,81 @@ fun ImportDialog(
 }
 
 @Composable
-fun ImportSourceOptionCard(
-    title: String,
-    description: String,
+private fun ImportSourceButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconColor: Color,
+    title: String,
+    subtitle: String,
     testTag: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
-    Box(
+    OutlinedButton(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(CosmicSurface)
-            .border(1.dp, CosmicBorder, RoundedCornerShape(16.dp))
-            .clickable { onClick() }
-            .padding(16.dp)
-            .testTag(testTag)
+            .heightIn(min = 64.dp)
+            .testTag(testTag),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CosmicBorder),
+        colors = ButtonDefaults.outlinedButtonColors(containerColor = CosmicSurface),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        Icon(icon, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = SlateTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(subtitle, color = SlateTextMuted, fontSize = 11.sp, lineHeight = 15.sp)
+        }
+    }
+}
+
+@Composable
+private fun ConflictResolution(
+    characterCount: Int,
+    onAppend: () -> Unit,
+    onReplace: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            "This script already has text.",
+            color = SlateTextPrimary,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+        )
+        Text(
+            "Imported source: $characterCount characters. Choose whether to add it after the current script or replace the current text.",
+            color = SlateTextSecondary,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+        )
+        HorizontalDivider(color = CosmicBorder)
+        Button(
+            onClick = onAppend,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .testTag("import_append_button"),
+            colors = ButtonDefaults.buttonColors(containerColor = ElectricPurple),
+            shape = RoundedCornerShape(12.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(iconColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = "$title Icon",
-                    tint = iconColor,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SlateTextPrimary
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = description,
-                    fontSize = 12.sp,
-                    color = SlateTextSecondary
-                )
-            }
+            Text("Append to script", fontWeight = FontWeight.Bold)
+        }
+        OutlinedButton(
+            onClick = onReplace,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .testTag("import_replace_button"),
+            border = androidx.compose.foundation.BorderStroke(1.dp, CosmicBorder),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Text("Replace current text", color = SlateTextPrimary)
+        }
+        TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("Cancel", color = SlateTextSecondary)
         }
     }
 }
