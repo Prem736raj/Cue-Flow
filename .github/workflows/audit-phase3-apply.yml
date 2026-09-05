@@ -1,0 +1,31 @@
+name: Apply audit phase three
+
+on:
+  push:
+    branches:
+      - audit/production-readiness-2026-09-06
+    paths:
+      - .phase3-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply home and localization fixes
+        run: python3 tools/apply_audit_phase3.py
+      - name: Commit corrected complete files
+        run: |
+          git config user.name "cueflow-audit-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/HomeScreen.kt \
+                  app/src/main/java/com/example/util/LanguageManager.kt
+          git commit -m "perf: remove list stagger and fix folder deletion localization"
+          git push origin HEAD:${GITHUB_REF_NAME}
