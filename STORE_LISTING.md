@@ -1,161 +1,84 @@
-# CueFlow: Floating Teleprompter — Store Listing Assets Document
+# CueFlow — Google Play Store Listing
 
-Prepare your Google Play Console store presence using this fully optimized, professional asset guide.
+## App title
 
----
+**CueFlow: Floating Teleprompter**
 
-## 1. Google Play Console Core Text Metadata
+## Short description
 
-### **App Title (Exactly 29 Characters — Limit: 30)**
-```text
-CueFlow: Floating Teleprompter
-```
+**Read scripts over camera and social apps with a draggable teleprompter overlay.**
 
-### **Short Description (Exactly 79 Characters — Limit: 80)**
-```text
-Speak confidently with a dual floating camera overlay and smart voice sync!
-```
+## Full description
 
----
+CueFlow is a lightweight Android teleprompter for creators, educators, speakers, presenters, and anyone who wants to read naturally while staying close to the camera.
 
-### **Full Description (Limit: 4000 Characters)**
+Write and organize scripts on your phone, rehearse at your own pace, or launch a floating teleprompter above the camera, social, meeting, or streaming app you already use.
 
-```text
-CueFlow is the ultimate production-grade, offline-first floating teleprompter designed for presenters, content creators, public speakers, teachers, and video professionals. Speak with absolute authority and crystal-clear execution while keeping direct eye contact with your camera at all times.
+### FLOATING TELEPROMPTER
+- Draggable, resizable overlay that stays above other apps when you enable Android's Draw over other apps permission
+- Adjustable text size, colors, backdrop opacity, window opacity, alignment, and starting position
+- Play, pause, speed, bookmark, mirror, and reading-position controls
 
-Whether you are recording YouTube videos, TikToks, Instagram Reels, Zoom presentations, or professional lectures, CueFlow gives you a seamless, edge-to-edge transparent overlay that glides perfectly over any application.
+### SCRIPT WORKSPACE
+- Create and edit scripts locally
+- Organize scripts into folders
+- Search your library
+- Add bookmarks for important lines
+- Import plain text, text-based PDFs, clipboard content, HTTPS web articles, and link-accessible Google Docs
 
----
+### REHEARSAL AND RECORDING
+- Camera-free practice mode with timing and pace feedback
+- Camera preview for framing and eye-line guidance
+- Optional video recording through Android CameraX
+- 720p, 1080p, or 4K preference with automatic quality fallback when the camera does not support the selected level
+- Recordings are saved through Android MediaStore under Movies/CueFlow
 
-🌟 KEY FEATURES THAT SET CUEFLOW APART:
+### VOICE AND REMOTE CONTROLS
+- Optional Android speech recognition can follow your spoken position in a script
+- Keyboard-style presentation clickers can control playback without device-list access
+- Optional Wi-Fi remote creates a temporary paired control page for a second device on the same trusted local network
 
-1. DUAL FLOATING OVERLAYS (PICTURE-IN-PICTURE)
-Need to run your script over Zoom, Google Meet, or your native camera app? CueFlow offers adjustable transparent floating text windows. Resize, reposition, and customize opacity on the fly so you can reference your lines while keeping your gaze locked onto the lens.
+### PRIVACY BY DEFAULT
+- No CueFlow account is required
+- No advertising or analytics SDK is included in this release
+- Scripts and folders are stored in CueFlow's local app database
+- Android app backup is disabled for CueFlow data
+- Camera and microphone permissions are requested only when a feature needs them
+- Web/Google Docs import uses the internet only when you explicitly request an online import
+- Speech recognition is provided by Android and may use an online recognition provider depending on your device and settings
+- The Wi-Fi remote is local-network only, session-paired, and does not expose script text or titles
 
-2. REAL-TIME VOCAL RHYTHM SYNC (VOICE SYNC Tracking)
-Tired of pre-set scroll speeds? Switch on our integrated voice sync mode. CueFlow dynamically analyzes your vocal cadence, reading pauses, and accents, moving the text forward ONLY as you speak. No internet required, no voice recordings saved.
+CueFlow's core script editor and teleprompter work without an internet connection. Features that inherently need connectivity, such as importing an online page, are clearly identified in the app.
 
-3. BUILT-IN VIDEO ACQUISITION CAMERA
-Create, record, and review within a single interface. Use our smart background camera preview with front/rear mirror toggles, flash options, and 1080p high-definition video capture.
+## Suggested screenshot sequence
 
-4. NEXT-GEN AI SCRIPT GENERATOR
-Stuck on what to say? Craft high-converting scripts in seconds. Choose your topic, tone, and target duration, and let our Gemini-powered smart AI draft compelling opening hooks, mid-arguments, and call-to-actions directly into your editor.
+1. **Script Library** — real Home screen showing folders, search, and local scripts. Caption: `Keep every script ready`
+2. **Editor** — script editor with text and prompting settings. Caption: `Write and tune your delivery`
+3. **Floating Overlay** — CueFlow overlay above a neutral camera-style background with no third-party logos. Caption: `Prompt above the app you use`
+4. **Practice Mode** — rehearsal screen with timer/progress. Caption: `Rehearse before you record`
+5. **Recording Mode** — real CueFlow camera/teleprompter UI. Caption: `Record while you read`
+6. **Remote Controls** — physical-control or paired Wi-Fi remote configuration. Caption: `Control without touching the script`
 
-5. SECURE OFFLINE CORE & DECENTRALIZED PRIVACY
-Your scripts and data belong to you. CueFlow operates with 100% database containment. No accounts, no data logging, no analytics trackers, and no mandatory internet connections. Completely local, completely private.
+Do not use Instagram, TikTok, YouTube, Zoom, Snapchat, or other third-party logos in promotional assets unless you have the necessary trademark permission. The UI can be demonstrated over a neutral mock camera background instead.
 
-6. FULL STYLE & VELOCITY CUSTOMIZATION
-Make CueFlow look exactly the way you want. Adjust margins, scrolling velocity from 1x to 10x, text alignments, borders, background opacities, and size parameters. Save configurations dynamically across custom AMOLED, Midnight Blue, Sunset Amber, or Light themes.
+## Feature graphic direction
 
----
+- Required canvas: **1024 x 500 px**
+- Show the CueFlow floating text window as the central product visual
+- Keep key content near the center so Play surfaces can crop safely
+- Avoid ranking claims, pricing claims, store badges, third-party logos, and unsupported feature claims
+- Suggested copy: **`Your script. Above any screen.`**
 
-🚀 WHY CHOOSE CUEFLOW?
-• Completely free with absolute feature access!
-• No distracting watermarks ever printed on your recordings.
-• Full compatibility with Bluetooth clickers and hardware media controller keys.
-• Zero internet requirement for standard prompter features, fully functional offline in airplane mode.
+## Play graphics checklist
 
-Unlock your full presentation flow today. Download CueFlow: Floating Teleprompter and own the room!
-```
+- [ ] 512 x 512 Play Store app icon, 32-bit PNG, maximum 1024 KB
+- [ ] 1024 x 500 feature graphic, JPEG or 24-bit PNG without alpha
+- [ ] At least 2 phone screenshots; target 4 or more 1080 x 1920 portrait screenshots for stronger merchandising eligibility
+- [ ] Screenshot alt text describing the actual screen shown
+- [ ] Optional preview video using current app behavior only
 
----
+## Positioning
 
-## 2. Graphic Asset Design Concepts
+Primary category position: **lightweight floating teleprompter for Android creators who already have a preferred camera or social app.**
 
-### **Feature Graphic (1024 x 500 px)**
-* **Visual Theme:** Deep Cosmic Slate Slate Background (`#090A0F`) with vibrant glowing, soft gradient laser lines of Electric Purple (`#9F7AEA`) and Electric Cyan (`#38BDF8`).
-* **Main Art Component:** A central 3D-styled floating tablet showing an active, transparent teleprompter overlay with text. Beside the tablet, a smartphone displaying a glowing camera lens looking direct at the presenter.
-* **Header Typography (Bold, high contrast display):** "CUEFLOW"
-* **Supporting Tagline Text:** "Own Your Presentation. Free Floating Teleprompter."
-
----
-
-## 3. High-Converting Play Store Screenshots (5-8 Sequence Plan)
-
-These screenshots should show off CueFlow's modern, atomic visual identity and premium theme options.
-
-### **Shot 1: The Hook (Welcome / Primary Dashboard)**
-* **Visual Content:** The gorgeous Cosmic dashboard showing your organized library of scripts with modern folders, card components, and the neon glowing floating FAB.
-* **Heading Text Overlay:** "ORGANIZED ATOMIC WORKSPACE"
-* **Sub-caption:** "Review, search, and generate scripts from one cohesive hub."
-
-### **Shot 2: The Core (Floating Teleprompter Mode)**
-* **Visual Content:** CueFlow running overlay-style atop a native camera app recording a video. Text scrolling smoothly inside a semi-transparent, neon-bordered window.
-* **Heading Text Overlay:** "FLOATING SYSTEM OVERLAY"
-* **Sub-caption:** "Keep constant, direct eye contact with your camera lens."
-
-### **Shot 3: The Tech (Voice Rhythm Sync)**
-* **Visual Content:** The playback calibration dialog showcasing the real-time audio microphone meter fluctuating. The "Vocal Sync" toggle lit up in electric cyan.
-* **Heading Text Overlay:** "SMART VOCAL RHYTHM SYNC"
-* **Sub-caption:** "Text crawls dynamically, locking onto your natural voice speed."
-
-### **Shot 4: The Creator (Dual Camera Acquisition)**
-* **Visual Content:** Inline front-camera recording feed inside the app with mirror orientation buttons, high-definition video parameters, and active teleprompter lines.
-* **Heading Text Overlay:** "CAPTURE STUNNING VIDEOS"
-* **Sub-caption:** "Record crisp 1080p presentations without watermarks."
-
-### **Shot 5: The Writer (AI Script Generator)**
-* **Visual Content:** The smart AI script modal generator prompting with topic selection, customized tones (Professional, Energetic, Casual), and the Gemini assistant drafting a high-converting script outline.
-* **Heading Text Overlay:** "GEMINI-AI SCRIPT ENGINE"
-* **Sub-caption:** "Draft compelling pitches and YouTube hooks in seconds."
-
-### **Shot 6: Creative Control (Custom Styling Options)**
-* **Visual Content:** The comprehensive settings dialog showing premium AMOLED black, Sunset Amber, and Midnight naval themes with precise font sliders and speed tuning.
-* **Heading Text Overlay:** "FULL ESTHETIC CONTROL"
-* **Sub-caption:** "Style scrolling velocities, opacity margins, and color presets."
-
----
-
-## 4. Play Store Launch Checklist (Technical Optimizations and Key Creation)
-
-Follow these direct, step-by-step instructions to compile your production-signed bundle and launch onto Google Play:
-
-### Step 1: Generate a Upload Keystore
-To sign your app for Google Play distribution, you must generate a secure keystore file if you don't already have one:
-1. Open your terminal or shell in your local development workspace.
-2. Run the `keytool` utility (bundled with your Java Development Kit/JDK):
-   ```bash
-   keytool -genkey -v -keystore cueflow-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias cueflow-key
-   ```
-3. Enter a secure password (make sure to write this password down!) and answer the profile questions.
-4. This generates the `cueflow-release.jks` file in your root workspace. **Never commit this file to public repositories.**
-
-### Step 2: Configure your `app/build.gradle.kts`
-Modify the `signingConfigs` and `buildTypes` inside your app's Gradle configurations:
-```kotlin
-android {
-    ...
-    signingConfigs {
-        create("release") {
-            storeFile = file("../cueflow-release.jks")
-            storePassword = "YOUR_KEYSTORE_PASSWORD"
-            keyAlias = "cueflow-key"
-            keyPassword = "YOUR_KEY_PASSWORD"
-        }
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
-        }
-    }
-}
-```
-
-### Step 3: Compile your Production Android App Bundle (.aab)
-Using Android Studio or your console terminal, run the following Gradle task:
-```bash
-gradle :app:bundleRelease
-```
-This command compiles the optimized distribution-ready `.aab` file located at:
-`/app/build/outputs/bundle/release/app-release.aab`
-
-### Step 4: Upload to Google Play Console
-1. Navigate to the [Google Play Console](https://play.google.com/apps/publish).
-2. Create a new Application called **CueFlow: Floating Teleprompter** and complete the Declarations questionnaires.
-3. Set up your **Internal Testing** or **Production Track**.
-4. Upload the generated `app-release.aab` file. Google Play App Signing will handle signing keys seamlessly.
-5. Fill out the Store Listing assets using Section 1 details, upload your high-resolution adaptive app icon, feature graphic, and screenshots.
-6. Submit for review! Our compliance targets ensure rapid approvals.
+Do not position CueFlow as an AI writing suite in v1. The differentiator is a low-friction local script workflow plus a flexible overlay and remote-control options, not cloud content generation.
