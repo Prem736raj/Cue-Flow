@@ -1,6 +1,12 @@
 package com.example.data
 
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -34,4 +40,10 @@ interface ScriptDao {
 
     @Query("UPDATE scripts SET folderName = NULL WHERE folderName = :folderName")
     suspend fun clearFolderAssociation(folderName: String)
+
+    @Transaction
+    suspend fun deleteFolderPreservingScripts(folder: Folder) {
+        clearFolderAssociation(folder.name)
+        deleteFolder(folder)
+    }
 }
