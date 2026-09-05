@@ -167,9 +167,10 @@ object WifiRemoteServer {
                 val target = parts[1]
 
                 val headers = linkedMapOf<String, String>()
-                repeat(MAX_HEADERS) {
-                    val line = reader.readLine() ?: return@repeat
-                    if (line.isEmpty()) return@repeat
+                var headerCount = 0
+                while (headerCount < MAX_HEADERS) {
+                    val line = reader.readLine() ?: break
+                    if (line.isEmpty()) break
                     if (line.length > MAX_HEADER_LINE) {
                         writeResponse(writer, 431, "text/plain; charset=utf-8", "Request header too large")
                         return
@@ -178,6 +179,7 @@ object WifiRemoteServer {
                     if (colon > 0) {
                         headers[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()
                     }
+                    headerCount++
                 }
 
                 lastRequestAtMs = System.currentTimeMillis()

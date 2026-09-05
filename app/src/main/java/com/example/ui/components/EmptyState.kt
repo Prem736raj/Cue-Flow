@@ -1,6 +1,5 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,13 +8,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,7 +33,6 @@ fun EmptyState(
     onCreateClick: () -> Unit,
     onImportClick: () -> Unit,
     onTemplateSelect: (title: String, content: String, speed: Int, size: Int) -> Unit,
-    onAiGenerateClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -91,7 +87,7 @@ fun EmptyState(
             )
 
             Text(
-                text = "Create your first script or let AI draft one for your camera presentation.",
+                text = "Create your first script, import existing notes, or start from a quick template.",
                 fontSize = 13.sp,
                 color = SlateTextSecondary,
                 textAlign = TextAlign.Center,
@@ -141,40 +137,8 @@ fun EmptyState(
                 }
             }
 
-            // 2. Secondary Action: AI Writer
-            OutlinedButton(
-                onClick = onAiGenerateClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("ai_generate_cta_button"),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = CosmicSurfaceElevated,
-                    contentColor = SlateTextPrimary
-                ),
-                border = BorderStroke(1.dp, CosmicBorder),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = ElectricPurple,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "Draft with AI",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = SlateTextPrimary
-                    )
-                }
-            }
 
-            // 3. Subtle Import Option
+            // Secondary import option
             TextButton(
                 onClick = onImportClick,
                 modifier = Modifier.testTag("import_script_cta_button")

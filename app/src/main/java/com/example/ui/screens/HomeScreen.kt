@@ -81,7 +81,6 @@ fun HomeScreen(
 
     val coroutineScope = rememberCoroutineScope()
     var showImportDialog by remember { mutableStateOf(false) }
-    var showAiPromptGenerator by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showVoiceToScriptDialog by remember { mutableStateOf(false) }
 
@@ -104,8 +103,6 @@ fun HomeScreen(
         topBar = {
             Column(modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
                 LogoHeader(
-                    onImportClick = { showImportDialog = true },
-                    onAiGenerateClick = { showAiPromptGenerator = true },
                     onVoiceRecordClick = { showVoiceToScriptDialog = true },
                     onSettingsClick = { showSettingsDialog = true }
                 )
@@ -310,8 +307,7 @@ fun HomeScreen(
                                 onImportClick = { showImportDialog = true },
                                 onTemplateSelect = { title, content, speed, size ->
                                     viewModel.addScript(title, content, speed, size)
-                                },
-                                onAiGenerateClick = { showAiPromptGenerator = true }
+                                }
                             )
                         }
                     }
@@ -719,7 +715,7 @@ fun HomeScreen(
                                 .fillMaxWidth()
                                 .height(44.dp)
                         ) {
-                            Text("Rate 5 Stars on Play Store", color = CosmicBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Rate CueFlow on Play Store", color = CosmicBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
                         Row(
@@ -762,7 +758,7 @@ fun HomeScreen(
         context.getSharedPreferences("cueflow_prefs", android.content.Context.MODE_PRIVATE)
     }
     val updateHasSeenOnboarding = remember { updatePrefs.getBoolean("has_seen_onboarding", false) }
-    val updateHasSeenWhatsNew = remember { updatePrefs.getBoolean("whats_new_dismissed_v1_3", false) }
+    val updateHasSeenWhatsNew = remember { updatePrefs.getBoolean("whats_new_dismissed_v1_0", false) }
     var showWhatsNewDialog by remember {
         mutableStateOf(updateHasSeenOnboarding && !updateHasSeenWhatsNew)
     }
@@ -770,7 +766,7 @@ fun HomeScreen(
     if (showWhatsNewDialog) {
         WhatsNewDialog(
             onDismiss = {
-                updatePrefs.edit().putBoolean("whats_new_dismissed_v1_3", true).apply()
+                updatePrefs.edit().putBoolean("whats_new_dismissed_v1_0", true).apply()
                 showWhatsNewDialog = false
             }
         )
@@ -856,7 +852,7 @@ fun HomeScreen(
             },
             text = {
                 Text(
-                    text = "${LanguageManager.get("delete_folder_confirm")}\n\n(${folder.name})",
+                    text = "Delete folder \"${folder.name}\"? Scripts in this folder will be kept and moved back to All Scripts.",
                     fontSize = 13.sp,
                     color = SlateTextSecondary
                 )
@@ -923,39 +919,6 @@ fun HomeScreen(
         )
     }
 
-    if (showAiPromptGenerator) {
-        AiScriptGeneratorDialog(
-            onDismiss = { showAiPromptGenerator = false },
-            onScriptAccepted = { scriptTitle, scriptContent ->
-                showAiPromptGenerator = false
-                coroutineScope.launch {
-                    val prefs = context.getSharedPreferences("cueflow_prefs", android.content.Context.MODE_PRIVATE)
-                    val defSpeed = prefs.getFloat("default_speed", 5f).toInt()
-                    val defFontSize = prefs.getFloat("default_font_size", 24f).toInt()
-                    val defTextColor = prefs.getString("default_text_color", "#FFFFFF") ?: "#FFFFFF"
-                    val defBgOpacity = prefs.getFloat("default_bg_opacity", 0.4f)
-                    val defTextAlignment = prefs.getString("default_text_alignment", "left") ?: "left"
-                    val defFolderSetting = prefs.getString("default_folder", "Unassigned") ?: "Unassigned"
-                    val defFolder = if (defFolderSetting == "Unassigned" || defFolderSetting.isBlank()) null else defFolderSetting
-
-                    val newScript = Script(
-                        title = scriptTitle,
-                        content = scriptContent,
-                        scrollSpeed = defSpeed,
-                        fontSize = defFontSize,
-                        textColor = defTextColor,
-                        bgOpacity = defBgOpacity,
-                        textAlignment = defTextAlignment,
-                        folderName = defFolder,
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
-                    )
-                    val insertedId = viewModel.saveScript(newScript)
-                    onEditScript(insertedId.toInt())
-                }
-            }
-        )
-    }
 
     if (showVoiceToScriptDialog) {
         VoiceToScriptDialog(
