@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Base Deep Space Background -->
+    <path
+        android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108">
+                <item android:color="#090A0F" android:offset="0.0" />
+                <item android:color="#120E21" android:offset="0.50" />
+                <item android:color="#070D18" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Tech Grid Accent (Top Left to Bottom Right) -->
+    <path
+        android:pathData="M18,0 L18,108 M36,0 L36,108 M54,0 L54,108 M72,0 L72,108 M90,0 L90,108"
+        android:strokeWidth="0.3"
+        android:strokeColor="#12ffffff" />
+    <path
+        android:pathData="M0,18 L108,18 M0,36 L108,36 M0,54 L108,54 M0,72 L108,72 M0,90 L108,90"
+        android:strokeWidth="0.3"
+        android:strokeColor="#12ffffff" />
+
+    <!-- Ambient Glowing Orb - Electric Purple top left -->
+    <path
+        android:pathData="M 15 15 A 35 35 0 1 1 14.9 15 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="15"
+                android:centerY="15"
+                android:gradientRadius="45">
+                <item android:color="#669F7AEA" android:offset="0.0" />
+                <item android:color="#00000000" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Ambient Glowing Orb - Electric Cyan bottom right -->
+    <path
+        android:pathData="M 93 93 A 30 30 0 1 1 92.9 93 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="93"
+                android:centerY="93"
+                android:gradientRadius="35">
+                <item android:color="#4D38BDF8" android:offset="0.0" />
+                <item android:color="#00000000" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Elegant inner bounding border for adaptive shapes contrast -->
+    <path
+        android:pathData="M54,4 C81.6,4 104,26.4 104,54 C104,81.6 81.6,104 54,104 C26.4,104 4,81.6 4,54 C4,26.4 26.4,4 54,4 Z"
+        android:strokeWidth="0.5"
+        android:strokeColor="#1Affffff"
+        android:fillColor="#00000000" />
+</vector>

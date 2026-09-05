@@ -1,0 +1,109 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 1. BACKDROP BASE LAYER (Represents background recording app or live feed) -->
+    <!-- Semitransparent tablet/phone screen shape -->
+    <path
+        android:pathData="M 32,36 H 76 C 79.3,36 82,38.7 82,42 V 76 C 82,79.3 79.3,82 76,82 H 32 C 28.7,82 26,79.3 26,76 V 42 C 26,38.7 28.7,36 32,36 Z"
+        android:fillColor="#15ffffff"
+        android:strokeWidth="1.2"
+        android:strokeColor="#1bffffff" />
+
+    <!-- Stylized Camera Lens symbol inside the background screen feed -->
+    <path
+        android:pathData="M 54,42 A 4 4 0 1 1 53.9,42 Z"
+        android:fillColor="#2038BDF8"
+        android:strokeWidth="1"
+        android:strokeColor="#2538BDF8" />
+
+    <!-- Faint Mock interface elements on background screen (like a status or recording badge) -->
+    <path
+        android:pathData="M 34,74 H 42"
+        android:strokeWidth="2"
+        android:strokeColor="#12ffffff"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M 70,74 H 74"
+        android:strokeWidth="2"
+        android:strokeColor="#15ff0000"
+        android:strokeLineCap="round" />
+
+    <!-- 2. FOREGROUND FLOATING TELEPROMPTER WIDGET LAYER (Stacked dynamically on top) -->
+    <!-- Drop Shadow representation at the bottom-right of the floating card -->
+    <path
+        android:pathData="M 36,24 H 72 C 75,24 78,27 78,30 V 58 C 78,61 75,64 72,64 H 36 C 33,64 30,61 30,58 V 30 C 30,27 33,24 36,24 Z"
+        android:fillColor="#3A000000" />
+
+    <!-- The actual floating prompter window -->
+    <path
+        android:pathData="M 34,22 H 72 C 75.3,22 78,24.7 78,28 V 56 C 78,59.3 75.3,62 72,62 H 34 C 30.7,62 28,59.3 28,56 V 28 C 28,24.7 30.7,22 34,22 Z"
+        android:fillColor="#0D0F16"
+        android:strokeWidth="2"
+        android:strokeColor="#9F7AEA" />
+
+    <!-- Floater Header Bar Divider -->
+    <path
+        android:pathData="M 28,31 H 78"
+        android:strokeWidth="0.8"
+        android:strokeColor="#1F9F7AEA" />
+
+    <!-- Blue recording/status dot in the float header -->
+    <path
+        android:pathData="M 34,26.5 A 1.5 1.5 0 1 1 33.9,26.5 Z"
+        android:fillColor="#38BDF8" />
+
+    <!-- Move Handle in header center -->
+    <path
+        android:pathData="M 50,26 H 58 M 50,27.5 H 58"
+        android:strokeWidth="0.8"
+        android:strokeColor="#30ffffff" />
+
+    <!-- Minimizer icon on header right -->
+    <path
+        android:pathData="M 70,26.5 H 73"
+        android:strokeWidth="1"
+        android:strokeColor="#50ffffff"
+        android:strokeLineCap="round" />
+
+    <!-- Teleprompter Lines: Text representation -->
+    <!-- Line 1: Normal text (White/Grey) -->
+    <path
+        android:pathData="M 36,37 H 64"
+        android:strokeWidth="2.8"
+        android:strokeColor="#E2E8F0"
+        android:strokeLineCap="round" />
+
+    <!-- Line 2: ACTIVE HIGHLIGHT TEXT (Electric Cyan, thicker, scrolled in active zone) -->
+    <path
+        android:pathData="M 36,44.5 H 68"
+        android:strokeWidth="3"
+        android:strokeColor="#38BDF8"
+        android:strokeLineCap="round" />
+
+    <!-- Active Text Indicator Chevron (Pointing up, representing automatic scrolling teleprompter) -->
+    <path
+        android:pathData="M 70.5,45 L 73,42.5 L 75.5,45 M 73,42.5 V 47.5"
+        android:strokeWidth="1.2"
+        android:strokeColor="#38BDF8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Line 3: Normal text (White/Grey) -->
+    <path
+        android:pathData="M 36,52 H 56"
+        android:strokeWidth="2.8"
+        android:strokeColor="#94A3B8"
+        android:strokeLineCap="round" />
+
+    <!-- Line 4: Faded upcoming speech line -->
+    <path
+        android:pathData="M 36,58 H 48"
+        android:strokeWidth="2.2"
+        android:strokeColor="#3394A3B8"
+        android:strokeLineCap="round" />
+
+</vector>
