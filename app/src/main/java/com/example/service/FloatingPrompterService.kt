@@ -200,7 +200,10 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            var fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            if (hasMicrophonePermission) {
+                fgsType = fgsType or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
             startForeground(NOTIFICATION_ID, notification, fgsType)
         } else {
             startForeground(NOTIFICATION_ID, notification)
@@ -240,7 +243,7 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE
             },
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -269,15 +272,19 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
                             stopSelf()
                         },
                         onDrag = { dx, dy ->
-                            params.x = (params.x + dx).coerceAtLeast(0)
-                            params.y = (params.y + dy).coerceAtLeast(0)
+                            val maxX = (screenWidth - params.width).coerceAtLeast(0)
+                            val maxY = (screenHeight - params.height).coerceAtLeast(0)
+                            params.x = (params.x + dx).coerceIn(0, maxX)
+                            params.y = (params.y + dy).coerceIn(0, maxY)
                             updateView()
                         },
                         onResize = { dw, dh ->
                             val minWidth = (180 * density).toInt()
                             val minHeight = (180 * density).toInt()
-                            params.width = (params.width + dw).coerceAtLeast(minWidth)
-                            params.height = (params.height + dh).coerceAtLeast(minHeight)
+                            params.width = (params.width + dw).coerceIn(minWidth, screenWidth)
+                            params.height = (params.height + dh).coerceIn(minHeight, screenHeight)
+                            params.x = params.x.coerceIn(0, (screenWidth - params.width).coerceAtLeast(0))
+                            params.y = params.y.coerceIn(0, (screenHeight - params.height).coerceAtLeast(0))
                             updateView()
                         }
                     )
@@ -408,8 +415,8 @@ fun FloatingPrompterUI(
                     val currentIndex = scrollState.firstVisibleItemIndex
                     var nextBookmarkIndex = -1
                     for (i in (currentIndex + 1) until lines.size) {
-                        val cleanLine = lines[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                        val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanLine }
+                        val cleanLine = lines[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                        val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanLine }
                         if (bookmarkedClean || bookmarkedSet.contains(lines[i])) {
                             nextBookmarkIndex = i
                             break
@@ -417,8 +424,8 @@ fun FloatingPrompterUI(
                     }
                     if (nextBookmarkIndex == -1) {
                         for (i in 0 until currentIndex) {
-                            val cleanLine = lines[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                            val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanLine }
+                            val cleanLine = lines[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                            val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanLine }
                             if (bookmarkedClean || bookmarkedSet.contains(lines[i])) {
                                 nextBookmarkIndex = i
                                 break
@@ -442,8 +449,8 @@ fun FloatingPrompterUI(
                     val currentIndex = scrollState.firstVisibleItemIndex
                     var prevBookmarkIndex = -1
                     for (i in (currentIndex - 1) downTo 0) {
-                        val cleanLine = lines[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                        val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanLine }
+                        val cleanLine = lines[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                        val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanLine }
                         if (bookmarkedClean || bookmarkedSet.contains(lines[i])) {
                             prevBookmarkIndex = i
                             break
@@ -451,8 +458,8 @@ fun FloatingPrompterUI(
                     }
                     if (prevBookmarkIndex == -1) {
                         for (i in (lines.size - 1) downTo currentIndex) {
-                            val cleanLine = lines[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                            val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanLine }
+                            val cleanLine = lines[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                            val bookmarkedClean = bookmarkedSet.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanLine }
                             if (bookmarkedClean || bookmarkedSet.contains(lines[i])) {
                                 prevBookmarkIndex = i
                                 break
@@ -600,7 +607,7 @@ fun FloatingPrompterUI(
     val voiceParagraphWords = remember(lines) {
         lines.map { para ->
             para.lowercase()
-                .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                 .split("\\s+".toRegex())
                 .filter { it.isNotBlank() }
         }
@@ -709,7 +716,7 @@ fun FloatingPrompterUI(
                         val spoken = matches[0] ?: ""
                         
                         val spokenWords = spoken.lowercase()
-                            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                             .split("\\s+".toRegex())
                             .filter { it.isNotBlank() }
                         
@@ -792,7 +799,7 @@ fun FloatingPrompterUI(
                         val spoken = matches[0] ?: ""
                         
                         val spokenWords = spoken.lowercase()
-                            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                             .split("\\s+".toRegex())
                             .filter { it.isNotBlank() }
                             
