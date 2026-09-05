@@ -266,7 +266,7 @@ fun HomeScreen(
                         IconButton(
                             onClick = { showCreateFolderDialog = true },
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(CosmicSurface)
                                 .border(1.dp, CosmicBorder, CircleShape)
@@ -399,25 +399,8 @@ fun HomeScreen(
                         // Order filteredScripts by most recently edited script first (updatedAt DESC)
                         val sortedFiltered = filteredScripts.sortedByDescending { it.updatedAt }
 
-                        itemsIndexed(sortedFiltered, key = { _, item -> item.id }) { index, item ->
-                            var isItemVisible by remember { mutableStateOf(false) }
-                            LaunchedEffect(key1 = item.id) {
-                                kotlinx.coroutines.delay(index * 45L)
-                                isItemVisible = true
-                            }
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = isItemVisible,
-                                enter = slideInVertically(
-                                    initialOffsetY = { 60 },
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessLow
-                                    )
-                                ) + fadeIn(animationSpec = tween(250)),
-                                exit = fadeOut(animationSpec = tween(150)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                val dismissState = rememberSwipeToDismissBoxState(
+                        items(sortedFiltered, key = { item -> item.id }) { item ->
+                            val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
                                     if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
                                         scriptToDelete = item
@@ -493,7 +476,6 @@ fun HomeScreen(
                                     )
                                 }
                             )
-                            }
                         }
                     }
                 }
