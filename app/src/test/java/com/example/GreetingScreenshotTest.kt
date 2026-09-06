@@ -15,7 +15,10 @@ import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [36])
+// Robolectric's API 36 preinstrumented jar requires JDK 21. Keep JVM tests
+// compatible with the project's JDK 17 CI baseline while production compiles
+// and targets API 36.
+@Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
 class GreetingScreenshotTest {
 
   @get:Rule val composeTestRule = createComposeRule()

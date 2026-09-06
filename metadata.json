@@ -1,6 +1,6 @@
 {
-  "name": "ScripFlow",
-  "description": "Sleek, premium, offline-first teleprompter designed for content creators and presenters. Compose scripts, customize scrolling behavior, and speak with confidence.",
+  "name": "CueFlow",
+  "description": "Lightweight Android teleprompter with local script management, camera rehearsal, and a draggable floating overlay.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

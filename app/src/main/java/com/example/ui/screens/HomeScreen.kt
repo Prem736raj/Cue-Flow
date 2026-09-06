@@ -26,6 +26,8 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,7 +83,6 @@ fun HomeScreen(
 
     val coroutineScope = rememberCoroutineScope()
     var showImportDialog by remember { mutableStateOf(false) }
-    var showAiPromptGenerator by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showVoiceToScriptDialog by remember { mutableStateOf(false) }
 
@@ -95,6 +96,62 @@ fun HomeScreen(
     var showOverlayPermissionExplainForScript by remember { mutableStateOf<Script?>(null) }
     var isPlaybackPracticeMode by remember { mutableStateOf(false) }
     var scriptToDelete by remember { mutableStateOf<Script?>(null) }
+    var pendingFloatingScript by remember { mutableStateOf<Script?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val script = pendingFloatingScript
+        pendingFloatingScript = null
+        if (!granted) {
+            android.widget.Toast.makeText(
+                context,
+                "Floating Mode will work, but its notification controls may be hidden.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+        if (script != null) {
+            val intent = Intent(context, FloatingPrompterService::class.java).apply {
+                putExtra("SCRIPT", script)
+            }
+            androidx.core.content.ContextCompat.startForegroundService(context, intent)
+            context.startActivity(Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            })
+        }
+    }
+
+    fun startFloatingService(script: Script) {
+        if (!Settings.canDrawOverlays(context)) {
+            showOverlayPermissionExplainForScript = script
+            return
+        }
+
+        val notificationPermissionNeeded =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                !prefs.getBoolean("notification_permission_prompted", false)
+
+        if (notificationPermissionNeeded) {
+            prefs.edit().putBoolean("notification_permission_prompted", true).apply()
+            pendingFloatingScript = script
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        val intent = Intent(context, FloatingPrompterService::class.java).apply {
+            putExtra("SCRIPT", script)
+        }
+        androidx.core.content.ContextCompat.startForegroundService(context, intent)
+        context.startActivity(Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        })
+    }
 
     Scaffold(
         modifier = modifier
@@ -104,8 +161,6 @@ fun HomeScreen(
         topBar = {
             Column(modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
                 LogoHeader(
-                    onImportClick = { showImportDialog = true },
-                    onAiGenerateClick = { showAiPromptGenerator = true },
                     onVoiceRecordClick = { showVoiceToScriptDialog = true },
                     onSettingsClick = { showSettingsDialog = true }
                 )
@@ -269,7 +324,7 @@ fun HomeScreen(
                         IconButton(
                             onClick = { showCreateFolderDialog = true },
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(CosmicSurface)
                                 .border(1.dp, CosmicBorder, CircleShape)
@@ -310,8 +365,7 @@ fun HomeScreen(
                                 onImportClick = { showImportDialog = true },
                                 onTemplateSelect = { title, content, speed, size ->
                                     viewModel.addScript(title, content, speed, size)
-                                },
-                                onAiGenerateClick = { showAiPromptGenerator = true }
+                                }
                             )
                         }
                     }
@@ -403,25 +457,8 @@ fun HomeScreen(
                         // Order filteredScripts by most recently edited script first (updatedAt DESC)
                         val sortedFiltered = filteredScripts.sortedByDescending { it.updatedAt }
 
-                        itemsIndexed(sortedFiltered, key = { _, item -> item.id }) { index, item ->
-                            var isItemVisible by remember { mutableStateOf(false) }
-                            LaunchedEffect(key1 = item.id) {
-                                kotlinx.coroutines.delay(index * 45L)
-                                isItemVisible = true
-                            }
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = isItemVisible,
-                                enter = slideInVertically(
-                                    initialOffsetY = { 60 },
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessLow
-                                    )
-                                ) + fadeIn(animationSpec = tween(250)),
-                                exit = fadeOut(animationSpec = tween(150)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                val dismissState = rememberSwipeToDismissBoxState(
+                        items(sortedFiltered, key = { item -> item.id }) { item ->
+                            val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
                                     if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
                                         scriptToDelete = item
@@ -476,28 +513,12 @@ fun HomeScreen(
                                         script = item,
                                         searchQuery = searchQuery,
                                         onPlayClick = { showModeSelectionForScript = it },
-                                        onFloatingQuickLaunch = { script ->
-                                            if (Settings.canDrawOverlays(context)) {
-                                                val intent = Intent(context, FloatingPrompterService::class.java).apply {
-                                                    putExtra("SCRIPT", script)
-                                                }
-                                                androidx.core.content.ContextCompat.startForegroundService(context, intent)
-                                                
-                                                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                                    addCategory(Intent.CATEGORY_HOME)
-                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                                }
-                                                context.startActivity(homeIntent)
-                                            } else {
-                                                showOverlayPermissionExplainForScript = script
-                                            }
-                                        },
+                                        onFloatingQuickLaunch = { script -> startFloatingService(script) },
                                         onEditClick = { onEditScript(item.id) },
                                         onDeleteClick = { scriptToDelete = item }
                                     )
                                 }
                             )
-                            }
                         }
                     }
                 }
@@ -517,20 +538,7 @@ fun HomeScreen(
             },
             onFloatingSelected = {
                 showModeSelectionForScript = null
-                if (Settings.canDrawOverlays(context)) {
-                    val intent = Intent(context, FloatingPrompterService::class.java).apply {
-                        putExtra("SCRIPT", script)
-                    }
-                    androidx.core.content.ContextCompat.startForegroundService(context, intent)
-                    
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(homeIntent)
-                } else {
-                    showOverlayPermissionExplainForScript = script
-                }
+                startFloatingService(script)
             }
         )
     }
@@ -719,7 +727,7 @@ fun HomeScreen(
                                 .fillMaxWidth()
                                 .height(44.dp)
                         ) {
-                            Text("Rate 5 Stars on Play Store", color = CosmicBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Rate CueFlow on Play Store", color = CosmicBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
                         Row(
@@ -762,7 +770,7 @@ fun HomeScreen(
         context.getSharedPreferences("cueflow_prefs", android.content.Context.MODE_PRIVATE)
     }
     val updateHasSeenOnboarding = remember { updatePrefs.getBoolean("has_seen_onboarding", false) }
-    val updateHasSeenWhatsNew = remember { updatePrefs.getBoolean("whats_new_dismissed_v1_3", false) }
+    val updateHasSeenWhatsNew = remember { updatePrefs.getBoolean("whats_new_dismissed_v1_0", false) }
     var showWhatsNewDialog by remember {
         mutableStateOf(updateHasSeenOnboarding && !updateHasSeenWhatsNew)
     }
@@ -770,7 +778,7 @@ fun HomeScreen(
     if (showWhatsNewDialog) {
         WhatsNewDialog(
             onDismiss = {
-                updatePrefs.edit().putBoolean("whats_new_dismissed_v1_3", true).apply()
+                updatePrefs.edit().putBoolean("whats_new_dismissed_v1_0", true).apply()
                 showWhatsNewDialog = false
             }
         )
@@ -856,7 +864,7 @@ fun HomeScreen(
             },
             text = {
                 Text(
-                    text = "${LanguageManager.get("delete_folder_confirm")}\n\n(${folder.name})",
+                    text = "Delete folder \"${folder.name}\"? Scripts in this folder will be kept and moved back to All Scripts.",
                     fontSize = 13.sp,
                     color = SlateTextSecondary
                 )
@@ -923,39 +931,6 @@ fun HomeScreen(
         )
     }
 
-    if (showAiPromptGenerator) {
-        AiScriptGeneratorDialog(
-            onDismiss = { showAiPromptGenerator = false },
-            onScriptAccepted = { scriptTitle, scriptContent ->
-                showAiPromptGenerator = false
-                coroutineScope.launch {
-                    val prefs = context.getSharedPreferences("cueflow_prefs", android.content.Context.MODE_PRIVATE)
-                    val defSpeed = prefs.getFloat("default_speed", 5f).toInt()
-                    val defFontSize = prefs.getFloat("default_font_size", 24f).toInt()
-                    val defTextColor = prefs.getString("default_text_color", "#FFFFFF") ?: "#FFFFFF"
-                    val defBgOpacity = prefs.getFloat("default_bg_opacity", 0.4f)
-                    val defTextAlignment = prefs.getString("default_text_alignment", "left") ?: "left"
-                    val defFolderSetting = prefs.getString("default_folder", "Unassigned") ?: "Unassigned"
-                    val defFolder = if (defFolderSetting == "Unassigned" || defFolderSetting.isBlank()) null else defFolderSetting
-
-                    val newScript = Script(
-                        title = scriptTitle,
-                        content = scriptContent,
-                        scrollSpeed = defSpeed,
-                        fontSize = defFontSize,
-                        textColor = defTextColor,
-                        bgOpacity = defBgOpacity,
-                        textAlignment = defTextAlignment,
-                        folderName = defFolder,
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
-                    )
-                    val insertedId = viewModel.saveScript(newScript)
-                    onEditScript(insertedId.toInt())
-                }
-            }
-        )
-    }
 
     if (showVoiceToScriptDialog) {
         VoiceToScriptDialog(

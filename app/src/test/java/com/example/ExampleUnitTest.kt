@@ -1,68 +1,104 @@
 package com.example
 
-import org.junit.Assert.*
-import org.junit.Test
 import com.example.util.HardwareButtonController
 import com.example.util.WifiRemoteServer
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
 
-/**
- * Example local unit test, which will execute on the development machine (host).
- *
- * See [testing documentation](http://d.android.com/tools/testing).
- */
 class ExampleUnitTest {
-  @Test
-  fun addition_isCorrect() {
-    assertEquals(4, 2 + 2)
-  }
 
-  @Test
-  fun testHardwareButtonControllerRemoteTrackingFields() {
-    HardwareButtonController.pActiveTitle = "Sample News Presentation"
-    HardwareButtonController.pIsPlaying = true
-    HardwareButtonController.pSpeed = 4.5f
-    HardwareButtonController.pCurrentParagraph = 3
-    HardwareButtonController.pTotalParagraphs = 10
+    private class RecordingListener : HardwareButtonController.Listener {
+        var speedUpCalls = 0
+        var speedDownCalls = 0
+        var playPauseCalls = 0
+        var nextBookmarkCalls = 0
+        var previousBookmarkCalls = 0
 
-    assertEquals("Sample News Presentation", HardwareButtonController.pActiveTitle)
-    assertTrue(HardwareButtonController.pIsPlaying)
-    assertEquals(4.5f, HardwareButtonController.pSpeed, 0.01f)
-    assertEquals(3, HardwareButtonController.pCurrentParagraph)
-    assertEquals(10, HardwareButtonController.pTotalParagraphs)
-  }
-
-  @Test
-  fun testWifiRemoteServerConfiguration() {
-    assertEquals(8990, WifiRemoteServer.PORT)
-    assertFalse(WifiRemoteServer.isRunning)
-  }
-
-  @Test
-  fun testSmartScriptDurationEstimator() {
-    // Word counts
-    val content = "This is a premium teleprompter app designed to be extremely polished"
-    val wordCount = content.split("\\s+".toRegex()).count { it.isNotBlank() }
-    assertEquals(11, wordCount)
-    
-    // Character counts
-    val charCount = content.length
-    assertEquals(68, charCount)
-
-    // At speed = 1.0 (1x), speaking speed is 30 WPM
-    // Estimated time is: (11 words / 30 wpm) * 60 = 22 seconds
-    val speedValue = 1.0f
-    val speakingSpeedWpm = speedValue * 30f
-    val totalSeconds = if (wordCount > 0) ((wordCount.toFloat() / speakingSpeedWpm) * 60f).toInt() else 0
-    assertEquals(22, totalSeconds)
-
-    // Format duration check
-    val mins = totalSeconds / 60
-    val secs = totalSeconds % 60
-    val durationText = when {
-        mins > 0 && secs > 0 -> "$mins min $secs sec"
-        mins > 0 -> "$mins min"
-        else -> "$secs sec"
+        override fun onSpeedUp() { speedUpCalls++ }
+        override fun onSpeedDown() { speedDownCalls++ }
+        override fun onPlayPause() { playPauseCalls++ }
+        override fun onSkipToNextBookmark() { nextBookmarkCalls++ }
+        override fun onPrevBookmark() { previousBookmarkCalls++ }
     }
-    assertEquals("22 sec", durationText)
-  }
+
+    private lateinit var listener: RecordingListener
+
+    @Before
+    fun setUp() {
+        listener = RecordingListener()
+        HardwareButtonController.isEnabled = false
+        HardwareButtonController.register(listener)
+    }
+
+    @After
+    fun tearDown() {
+        HardwareButtonController.unregister(listener)
+        HardwareButtonController.isEnabled = false
+    }
+
+    @Test
+    fun `disabled hardware controls ignore ordinary dispatch`() {
+        HardwareButtonController.dispatchPlayPause()
+        HardwareButtonController.dispatchSpeedUp()
+        HardwareButtonController.dispatchSpeedDown()
+        HardwareButtonController.dispatchSkipToNextBookmark()
+        HardwareButtonController.dispatchPrevBookmark()
+
+        assertEquals(0, listener.playPauseCalls)
+        assertEquals(0, listener.speedUpCalls)
+        assertEquals(0, listener.speedDownCalls)
+        assertEquals(0, listener.nextBookmarkCalls)
+        assertEquals(0, listener.previousBookmarkCalls)
+    }
+
+    @Test
+    fun `enabled hardware controls dispatch each mapped action`() {
+        HardwareButtonController.isEnabled = true
+
+        HardwareButtonController.dispatchPlayPause()
+        HardwareButtonController.dispatchSpeedUp()
+        HardwareButtonController.dispatchSpeedDown()
+        HardwareButtonController.dispatchSkipToNextBookmark()
+        HardwareButtonController.dispatchPrevBookmark()
+
+        assertEquals(1, listener.playPauseCalls)
+        assertEquals(1, listener.speedUpCalls)
+        assertEquals(1, listener.speedDownCalls)
+        assertEquals(1, listener.nextBookmarkCalls)
+        assertEquals(1, listener.previousBookmarkCalls)
+    }
+
+    @Test
+    fun `authenticated remote dispatch can force controls without enabling physical buttons`() {
+        HardwareButtonController.dispatchPlayPause(force = true)
+        HardwareButtonController.dispatchSpeedUp(force = true)
+
+        assertEquals(1, listener.playPauseCalls)
+        assertEquals(1, listener.speedUpCalls)
+    }
+
+    @Test
+    fun `remote state model exposes playback progress without requiring server startup`() {
+        HardwareButtonController.pActiveTitle = "Private title"
+        HardwareButtonController.pIsPlaying = true
+        HardwareButtonController.pSpeed = 4.5f
+        HardwareButtonController.pCurrentParagraph = 3
+        HardwareButtonController.pTotalParagraphs = 10
+
+        assertEquals("Private title", HardwareButtonController.pActiveTitle)
+        assertTrue(HardwareButtonController.pIsPlaying)
+        assertEquals(4.5f, HardwareButtonController.pSpeed, 0.01f)
+        assertEquals(3, HardwareButtonController.pCurrentParagraph)
+        assertEquals(10, HardwareButtonController.pTotalParagraphs)
+    }
+
+    @Test
+    fun `wifi remote uses stable local port and is opt in`() {
+        assertEquals(8990, WifiRemoteServer.PORT)
+        assertFalse(WifiRemoteServer.isRunning)
+    }
 }

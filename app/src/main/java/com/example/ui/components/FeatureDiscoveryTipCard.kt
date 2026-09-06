@@ -64,15 +64,6 @@ fun FeatureDiscoveryTipCard(
                 tintColor = ElectricPurple
             ),
             DiscoveryTip(
-                id = "ai_generation",
-                title = "Need writing help?",
-                text = "Draft clean, high-engaging prompt scripts automatically using our Gemini AI Script generator.",
-                actionLabel = "Open AI Generator",
-                actionType = "ai",
-                icon = Icons.Default.AutoAwesome,
-                tintColor = ElectricCyan
-            ),
-            DiscoveryTip(
                 id = "smart_settings",
                 title = "Reading Optimization",
                 text = "Adjust text size, scrolling speed, line spacing, and amoled night themes from settings.",
@@ -84,7 +75,7 @@ fun FeatureDiscoveryTipCard(
             DiscoveryTip(
                 id = "import_scripts",
                 title = "Import Instantly",
-                text = "Pasting or importing raw text/files converts word docs or PDF scripts directly into telemetry scripts.",
+                text = "Paste text or import supported TXT/PDF files and HTTPS sources into an editable script.",
                 actionLabel = "Import Script",
                 actionType = "import",
                 icon = Icons.Default.CloudUpload,

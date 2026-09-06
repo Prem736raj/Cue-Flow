@@ -11,17 +11,12 @@ class ScriptRepository(private val scriptDao: ScriptDao) {
     }
 
     suspend fun deleteFolder(folder: Folder) {
-        scriptDao.clearFolderAssociation(folder.name)
-        scriptDao.deleteFolder(folder)
+        scriptDao.deleteFolderPreservingScripts(folder)
     }
 
-    suspend fun getScriptById(id: Int): Script? {
-        return scriptDao.getScriptById(id)
-    }
+    suspend fun getScriptById(id: Int): Script? = scriptDao.getScriptById(id)
 
-    suspend fun insert(script: Script): Long {
-        return scriptDao.insertScript(script)
-    }
+    suspend fun insert(script: Script): Long = scriptDao.insertScript(script)
 
     suspend fun update(script: Script) {
         scriptDao.updateScript(script)

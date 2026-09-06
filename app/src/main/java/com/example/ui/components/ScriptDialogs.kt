@@ -425,8 +425,6 @@ fun TeleprompterPlaybackDialog(
 
     var cameraErrorMessage by remember { mutableStateOf<String?>(null) }
     var cameraRetryCount by remember { mutableIntStateOf(0) }
-    var storageWarningMessage by remember { mutableStateOf<String?>(null) }
-    var wasRecordingInterrupted by remember { mutableStateOf(false) }
     var permissionDeniedPermanently by remember { mutableStateOf(false) }
     var voiceSyncErrorMessage by remember { mutableStateOf<String?>(null) }
     var isNoisyEnvironment by remember { mutableStateOf(false) }
@@ -488,11 +486,9 @@ fun TeleprompterPlaybackDialog(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
-                if (isRecording) {
-                    isRecording = false
-                    wasRecordingInterrupted = true
-                }
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && isRecording) {
+                // Request a clean stop. CameraX Finalize is the single source of truth for save success.
+                isRecording = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -507,13 +503,6 @@ fun TeleprompterPlaybackDialog(
             while (isRecording) {
                 delay(1000)
                 recordingDurationSec++
-                
-                // Monitor storage space periodically during recording
-                val currentSpace = context.filesDir.usableSpace
-                if (currentSpace < 10 * 1024 * 1024) { // Less than 10MB
-                    isRecording = false
-                    storageWarningMessage = "Recording stopped. Device storage is currently full. We have safely saved what you loaded up to this point!"
-                }
             }
         }
     }
@@ -647,9 +636,7 @@ fun TeleprompterPlaybackDialog(
     var isHardwareControlActive by remember {
         mutableStateOf(prefs.getBoolean("hardware_buttons_enabled", false))
     }
-    var isWifiRemoteActive by remember {
-        mutableStateOf(prefs.getBoolean("wifi_remote_enabled", false))
-    }
+    var isWifiRemoteActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(isWifiRemoteActive) {
         if (isWifiRemoteActive) {
@@ -657,6 +644,10 @@ fun TeleprompterPlaybackDialog(
         } else {
             com.example.util.WifiRemoteServer.stop()
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { com.example.util.WifiRemoteServer.stop() }
     }
 
     var hardwareButtonIndicatorText by remember { mutableStateOf<String?>(null) }
@@ -704,8 +695,8 @@ fun TeleprompterPlaybackDialog(
                     val currentIndex = scrollState.firstVisibleItemIndex
                     var nextBookmarkIndex = -1
                     for (i in (currentIndex + 1) until paragraphs.size) {
-                        val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                        val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanP }
+                        val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                        val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanP }
                         if (bookmarkedClean || bookmarkedLines.contains(paragraphs[i])) {
                             nextBookmarkIndex = i
                             break
@@ -713,8 +704,8 @@ fun TeleprompterPlaybackDialog(
                     }
                     if (nextBookmarkIndex == -1) {
                         for (i in 0 until currentIndex) {
-                            val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                            val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanP }
+                            val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                            val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanP }
                             if (bookmarkedClean || bookmarkedLines.contains(paragraphs[i])) {
                                 nextBookmarkIndex = i
                                 break
@@ -739,8 +730,8 @@ fun TeleprompterPlaybackDialog(
                     val currentIndex = scrollState.firstVisibleItemIndex
                     var prevBookmarkIndex = -1
                     for (i in (currentIndex - 1) downTo 0) {
-                        val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                        val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanP }
+                        val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                        val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanP }
                         if (bookmarkedClean || bookmarkedLines.contains(paragraphs[i])) {
                             prevBookmarkIndex = i
                             break
@@ -748,8 +739,8 @@ fun TeleprompterPlaybackDialog(
                     }
                     if (prevBookmarkIndex == -1) {
                         for (i in (paragraphs.size - 1) downTo currentIndex) {
-                            val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "")
-                            val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^a-zA-Z0-9\\s]"), "") == cleanP }
+                            val cleanP = paragraphs[i].trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+                            val bookmarkedClean = bookmarkedLines.any { b -> b.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}\\s]"), "") == cleanP }
                             if (bookmarkedClean || bookmarkedLines.contains(paragraphs[i])) {
                                 prevBookmarkIndex = i
                                 break
@@ -961,11 +952,9 @@ fun TeleprompterPlaybackDialog(
     }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val cameraGranted = permissions[android.Manifest.permission.CAMERA] ?: false
+        contract = ActivityResultContracts.RequestPermission()
+    ) { cameraGranted ->
         hasCameraPermission = cameraGranted
-        hasAudioPermission = permissions[android.Manifest.permission.RECORD_AUDIO] ?: false
         if (cameraGranted) {
             showPermissionExplanation = false
             permissionDeniedPermanently = false
@@ -973,6 +962,35 @@ fun TeleprompterPlaybackDialog(
         } else {
             permissionDeniedPermanently = true
             showPermissionExplanation = true
+        }
+    }
+
+    var startRecordingAfterAudioPrompt by remember { mutableStateOf(false) }
+    val recordingAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasAudioPermission = granted
+        if (!granted) {
+            android.widget.Toast.makeText(
+                context,
+                "Microphone access was not granted. This recording will be silent.",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+        if (startRecordingAfterAudioPrompt) {
+            startRecordingAfterAudioPrompt = false
+            isRecording = true
+            if (!isPlaying) isPlaying = true
+        }
+    }
+
+    fun requestRecordingStart() {
+        if (hasAudioPermission) {
+            isRecording = true
+            if (!isPlaying) isPlaying = true
+        } else {
+            startRecordingAfterAudioPrompt = true
+            recordingAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -993,14 +1011,9 @@ fun TeleprompterPlaybackDialog(
             isCountingDown = false
             isPlaying = true
             
-            // Automatically start recording when countdown finishes if in camera mode
-            if (!internalPracticeMode && hasCameraPermission) {
-                val usableSpace = context.filesDir.usableSpace
-                if (usableSpace < 50 * 1024 * 1024) {
-                    storageWarningMessage = "Could not start recording because phone storage space is critically low (less than 50MB free)."
-                } else if (!isRecording) {
-                    isRecording = true
-                }
+            // Record mode starts only after camera consent, then asks separately for microphone audio.
+            if (!internalPracticeMode && hasCameraPermission && !isRecording) {
+                requestRecordingStart()
             }
         }
     }
@@ -1070,7 +1083,7 @@ fun TeleprompterPlaybackDialog(
     val voiceParagraphWords = remember(resolvedParagraphs) {
         resolvedParagraphs.map { para ->
             para.lowercase()
-                .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                 .split("\\s+".toRegex())
                 .filter { it.isNotBlank() }
         }
@@ -1188,7 +1201,7 @@ fun TeleprompterPlaybackDialog(
                         spokenWordsText = spoken
                         
                         val spokenWords = spoken.lowercase()
-                            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                             .split("\\s+".toRegex())
                             .filter { it.isNotBlank() }
                         
@@ -1277,7 +1290,7 @@ fun TeleprompterPlaybackDialog(
                         spokenWordsText = spoken
                         
                         val spokenWords = spoken.lowercase()
-                            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                             .split("\\s+".toRegex())
                             .filter { it.isNotBlank() }
                             
@@ -1560,7 +1573,7 @@ fun TeleprompterPlaybackDialog(
                         }
                         
                         Text(
-                            text = "[ CAMERA FEED DISABLED - SIMULATION ACTIVE ]",
+                            text = "Camera permission is required for Record Video mode.",
                             color = Color.White.copy(alpha = 0.22f),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -2260,22 +2273,11 @@ fun TeleprompterPlaybackDialog(
                                             IconButton(
                                                 onClick = {
                                                     if (!hasCameraPermission) {
-                                                        cameraPermissionLauncher.launch(
-                                                            arrayOf(
-                                                                android.Manifest.permission.CAMERA,
-                                                                android.Manifest.permission.RECORD_AUDIO
-                                                            )
-                                                        )
+                                                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                                    } else if (isRecording) {
+                                                        isRecording = false
                                                     } else {
-                                                        val usableSpace = context.filesDir.usableSpace
-                                                        if (!isRecording && usableSpace < 50 * 1024 * 1024) {
-                                                            storageWarningMessage = "Could not start recording because phone storage space is critically low (less than 50MB free)."
-                                                        } else {
-                                                            isRecording = !isRecording
-                                                            if (isRecording && !isPlaying) {
-                                                                isPlaying = true
-                                                            }
-                                                        }
+                                                        requestRecordingStart()
                                                     }
                                                 },
                                                 modifier = Modifier
@@ -2923,7 +2925,6 @@ fun TeleprompterPlaybackDialog(
                                         checked = isWifiRemoteActive,
                                         onCheckedChange = { checked ->
                                             isWifiRemoteActive = checked
-                                            prefs.edit().putBoolean("wifi_remote_enabled", checked).apply()
                                         },
                                         colors = SwitchDefaults.colors(
                                             checkedThumbColor = ElectricCyan,
@@ -2941,7 +2942,8 @@ fun TeleprompterPlaybackDialog(
                                     Spacer(modifier = Modifier.height(12.dp))
 
                                     val activeIp = com.example.util.WifiRemoteServer.serverIpAddress ?: "127.0.0.1"
-                                    val serverUrl = "http://$activeIp:8990"
+                                    val pairingToken = com.example.util.WifiRemoteServer.pairingToken
+                                    val serverUrl = "http://$activeIp:${com.example.util.WifiRemoteServer.PORT}/?token=$pairingToken"
 
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
@@ -2956,7 +2958,7 @@ fun TeleprompterPlaybackDialog(
                                         )
 
                                         // QR CODE GENERATION
-                                        val qrBitmap = remember(activeIp) {
+                                        val qrBitmap = remember(activeIp, pairingToken) {
                                             try {
                                                 val writer = com.google.zxing.qrcode.QRCodeWriter()
                                                 val bitMatrix = writer.encode(serverUrl, com.google.zxing.BarcodeFormat.QR_CODE, 200, 200)
@@ -3029,7 +3031,7 @@ fun TeleprompterPlaybackDialog(
                                         }
 
                                         Text(
-                                            text = "Note: Both devices must be connected to the same WiFi network.",
+                                            text = "Both devices must be on the same trusted Wi-Fi network. This pairing link is temporary and expires when the remote stops or goes idle.",
                                             color = SlateTextSecondary,
                                             fontSize = 9.sp,
                                             textAlign = TextAlign.Center
@@ -3054,7 +3056,7 @@ fun TeleprompterPlaybackDialog(
                                 IconButton(
                                     onClick = { if (!isVoiceSyncActive) speed = (speed - 0.2f).coerceAtLeast(0.5f) },
                                     enabled = !isVoiceSyncActive,
-                                    modifier = Modifier.size(32.dp).testTag("speed_decrease_fine")
+                                    modifier = Modifier.size(48.dp).testTag("speed_decrease_fine")
                                 ) {
                                     Icon(Icons.Default.Remove, contentDescription = "Decrement Speed", tint = Color.White)
                                 }
@@ -3075,7 +3077,7 @@ fun TeleprompterPlaybackDialog(
                                 IconButton(
                                     onClick = { if (!isVoiceSyncActive) speed = (speed + 0.2f).coerceAtMost(15.0f) },
                                     enabled = !isVoiceSyncActive,
-                                    modifier = Modifier.size(32.dp).testTag("speed_increase_fine")
+                                    modifier = Modifier.size(48.dp).testTag("speed_increase_fine")
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = "Increment Speed", tint = Color.White)
                                 }
@@ -3105,7 +3107,7 @@ fun TeleprompterPlaybackDialog(
                                         textGuideOffsetY = (textGuideOffsetY - 10f).coerceAtLeast(80f)
                                         prefs.edit().putFloat("script_text_offset_${script.id}", textGuideOffsetY).apply()
                                     },
-                                    modifier = Modifier.size(32.dp).testTag("height_decrease_fine")
+                                    modifier = Modifier.size(48.dp).testTag("height_decrease_fine")
                                 ) {
                                     Icon(Icons.Default.ArrowUpward, contentDescription = "Move Text Up", tint = Color.White)
                                 }
@@ -3130,7 +3132,7 @@ fun TeleprompterPlaybackDialog(
                                         textGuideOffsetY = (textGuideOffsetY + 10f).coerceAtMost(450f)
                                         prefs.edit().putFloat("script_text_offset_${script.id}", textGuideOffsetY).apply()
                                     },
-                                    modifier = Modifier.size(32.dp).testTag("height_increase_fine")
+                                    modifier = Modifier.size(48.dp).testTag("height_increase_fine")
                                 ) {
                                     Icon(Icons.Default.ArrowDownward, contentDescription = "Move Text Down", tint = Color.White)
                                 }
@@ -3212,22 +3214,11 @@ fun TeleprompterPlaybackDialog(
                                     IconButton(
                                         onClick = {
                                             if (!hasCameraPermission) {
-                                                cameraPermissionLauncher.launch(
-                                                    arrayOf(
-                                                        android.Manifest.permission.CAMERA,
-                                                        android.Manifest.permission.RECORD_AUDIO
-                                                    )
-                                                )
+                                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                            } else if (isRecording) {
+                                                isRecording = false
                                             } else {
-                                                val usableSpace = context.filesDir.usableSpace
-                                                if (!isRecording && usableSpace < 50 * 1024 * 1024) {
-                                                    storageWarningMessage = "Could not start recording because phone storage space is critically low (less than 50MB free)."
-                                                } else {
-                                                    isRecording = !isRecording
-                                                    if (isRecording && !isPlaying) {
-                                                        isPlaying = true
-                                                    }
-                                                }
+                                                requestRecordingStart()
                                             }
                                         },
                                         modifier = Modifier
@@ -3566,7 +3557,7 @@ fun TeleprompterPlaybackDialog(
                         }
 
                         Text(
-                            text = "Enable Mirror Camera",
+                            text = "Allow Camera Preview",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = SlateTextPrimary,
@@ -3574,7 +3565,7 @@ fun TeleprompterPlaybackDialog(
                         )
 
                         Text(
-                            text = "Stream a real-time self-reflection loop directly behind your scrolling content to optimize your posture, verify your framing, and maintain natural speaker eye contact aligned perfectly near the lens.",
+                            text = "CueFlow uses the camera only for the live preview and Record Video mode. Microphone access is requested separately when audio recording or voice sync needs it.",
                             fontSize = 13.sp,
                             color = SlateTextSecondary,
                             textAlign = TextAlign.Center,
@@ -3607,7 +3598,7 @@ fun TeleprompterPlaybackDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(16.dp))
-                                Text("100% Secure, locally buffered loop. No recording saved.", fontSize = 11.sp, color = SlateTextPrimary, fontWeight = FontWeight.Medium)
+                                Text("Camera preview stays on-device. Video is saved only during Record Video mode.", fontSize = 11.sp, color = SlateTextPrimary, fontWeight = FontWeight.Medium)
                             }
                         }
 
@@ -3619,12 +3610,7 @@ fun TeleprompterPlaybackDialog(
                         ) {
                             Button(
                                 onClick = { 
-                                    cameraPermissionLauncher.launch(
-                                        arrayOf(
-                                            android.Manifest.permission.CAMERA,
-                                            android.Manifest.permission.RECORD_AUDIO
-                                        )
-                                    )
+                                    cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -3642,6 +3628,7 @@ fun TeleprompterPlaybackDialog(
                             Button(
                                 onClick = { 
                                     showPermissionExplanation = false
+                                    internalPracticeMode = true
                                     isCountingDown = true
                                 },
                                 modifier = Modifier
@@ -3888,125 +3875,8 @@ fun TeleprompterPlaybackDialog(
                 }
             }
 
-            if (storageWarningMessage != null) {
-                androidx.compose.ui.window.Dialog(
-                    onDismissRequest = { storageWarningMessage = null }
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicSurface,
-                            contentColor = SlateTextPrimary
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .border(1.dp, ElectricPurple.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(CircleShape)
-                                    .background(ElectricPurple.copy(alpha = 0.12f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Storage,
-                                    contentDescription = "Storage Alarm",
-                                    tint = ElectricPurple,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            Text(
-                                text = "Device Storage Issue",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateTextPrimary
-                            )
-                            Text(
-                                text = storageWarningMessage ?: "",
-                                fontSize = 13.sp,
-                                color = SlateTextSecondary,
-                                textAlign = TextAlign.Center,
-                                lineHeight = 18.sp
-                            )
-                            Button(
-                                onClick = { storageWarningMessage = null },
-                                colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan),
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                            ) {
-                                Text("Recognized", color = CosmicBackground, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
 
-            if (wasRecordingInterrupted) {
-                androidx.compose.ui.window.Dialog(
-                    onDismissRequest = { wasRecordingInterrupted = false }
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicSurface,
-                            contentColor = SlateTextPrimary
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .border(1.dp, ElectricCyan.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(CircleShape)
-                                    .background(ElectricCyan.copy(alpha = 0.12f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Save,
-                                    contentDescription = "Recording Saved",
-                                    tint = ElectricCyan,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            Text(
-                                text = "Recording Saved Successfully",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateTextPrimary
-                            )
-                            Text(
-                                text = "Your recording was interrupted by an incoming phone call, alarm, or another foreground application. We have safely saved whatever you presented up to that absolute instant directly in your device gallery!",
-                                fontSize = 13.sp,
-                                color = SlateTextSecondary,
-                                textAlign = TextAlign.Center,
-                                lineHeight = 18.sp
-                            )
-                            Button(
-                                onClick = { wasRecordingInterrupted = false },
-                                colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan),
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                            ) {
-                                Text("Great, thank you!", color = CosmicBackground, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Success feedback dialog card upon recording stop/finalize
+            // Success feedback dialog card is shown only after a successful CameraX Finalize event
             if (showRecordingSavedDialog) {
                 Dialog(
                     onDismissRequest = { showRecordingSavedDialog = false }
@@ -4051,7 +3921,7 @@ fun TeleprompterPlaybackDialog(
                             )
 
                             Text(
-                                text = "Your clean, high-quality speaker session without teleprompter markings has been preserved in your phone's Gallery / Camera Roll.",
+                                text = "CameraX finished saving this recording to Movies/CueFlow. You can open it from your gallery or play it now.",
                                 fontSize = 13.sp,
                                 color = SlateTextSecondary,
                                 textAlign = TextAlign.Center,
@@ -4292,9 +4162,34 @@ fun CameraPreview(
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     
-    val videoCapture: androidx.camera.video.VideoCapture<androidx.camera.video.Recorder> = remember {
+    val recordingQuality = remember(context) {
+        context.getSharedPreferences("cueflow_prefs", android.content.Context.MODE_PRIVATE)
+            .getString("recording_video_quality", "1080p") ?: "1080p"
+    }
+    val videoCapture: androidx.camera.video.VideoCapture<androidx.camera.video.Recorder> = remember(recordingQuality) {
+        val qualityOrder = when (recordingQuality) {
+            "4K" -> listOf(
+                androidx.camera.video.Quality.UHD,
+                androidx.camera.video.Quality.FHD,
+                androidx.camera.video.Quality.HD,
+                androidx.camera.video.Quality.SD,
+            )
+            "720p" -> listOf(
+                androidx.camera.video.Quality.HD,
+                androidx.camera.video.Quality.SD,
+            )
+            else -> listOf(
+                androidx.camera.video.Quality.FHD,
+                androidx.camera.video.Quality.HD,
+                androidx.camera.video.Quality.SD,
+            )
+        }
+        val selector = androidx.camera.video.QualitySelector.fromOrderedList(
+            qualityOrder,
+            androidx.camera.video.FallbackStrategy.lowerQualityOrHigherThan(androidx.camera.video.Quality.SD),
+        )
         val recorder = androidx.camera.video.Recorder.Builder()
-            .setQualitySelector(androidx.camera.video.QualitySelector.from(androidx.camera.video.Quality.HIGHEST))
+            .setQualitySelector(selector)
             .build()
         androidx.camera.video.VideoCapture.withOutput(recorder)
     }
@@ -4347,11 +4242,13 @@ fun CameraPreview(
                             onRecordingStarted()
                         }
                         is androidx.camera.video.VideoRecordEvent.Finalize -> {
+                            currentRecording.value = null
                             if (!event.hasError()) {
                                 onRecordingStopped(event.outputResults.outputUri)
                             } else {
                                 android.util.Log.e("CameraPreview", "Recording finalized error: ${event.error}")
-                                onRecordingStopped(event.outputResults.outputUri)
+                                onCameraError("Recording could not be saved (CameraX error ${event.error}). Check available storage and try again.")
+                                onRecordingStopped(null)
                             }
                         }
                     }
@@ -4359,6 +4256,7 @@ fun CameraPreview(
                 currentRecording.value = activeRec
             } catch (e: Exception) {
                 android.util.Log.e("CameraPreview", "Error starting recording: ${e.localizedMessage}")
+                onCameraError("Recording could not start. ${e.localizedMessage ?: "Please retry."}")
                 onRecordingStopped(null)
             }
         } else {
@@ -4730,14 +4628,6 @@ fun PromptModeSelectionDialog(
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
-                                Box(
-                                    modifier = Modifier
-                                        .background(WarmAmber.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                                        .border(BorderStroke(0.5.dp, WarmAmber), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                                ) {
-                                    Text("PRO", fontSize = 8.sp, color = WarmAmber, fontWeight = FontWeight.ExtraBold)
-                                }
                             }
                             Text(
                                 text = "Stay on top of Instagram, TikTok, Zoom, or any camera app! Read script scroll smoothly in glass overlay.",
@@ -5160,7 +5050,7 @@ fun VoiceSyncSettingsDialog(
     val testSentence = "Welcome to CueFlow. This smart scrolling system follows my speech pace perfectly, adjusting as I talk."
     val testWords = remember {
         testSentence.lowercase()
-            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
             .split("\\s+".toRegex())
             .filter { it.isNotBlank() }
     }
@@ -5206,7 +5096,7 @@ fun VoiceSyncSettingsDialog(
                     if (!matches.isNullOrEmpty()) {
                         val spoken = matches[0] ?: ""
                         val list = spoken.lowercase()
-                            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                             .split("\\s+".toRegex())
                             .filter { it.isNotBlank() }
                         spokenList = list
@@ -5243,7 +5133,7 @@ fun VoiceSyncSettingsDialog(
                     if (!matches.isNullOrEmpty()) {
                         val spoken = matches[0] ?: ""
                         val list = spoken.lowercase()
-                            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+                            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
                             .split("\\s+".toRegex())
                             .filter { it.isNotBlank() }
                         spokenList = list
@@ -5325,7 +5215,7 @@ fun VoiceSyncSettingsDialog(
                             color = SlateTextSecondary
                         )
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.LightGray)
                     }
                 }
@@ -5384,7 +5274,7 @@ fun VoiceSyncSettingsDialog(
                         val annotatedText = buildAnnotatedString {
                             val originalTokens = testSentence.split(" ")
                             originalTokens.forEachIndexed { idx, token ->
-                                val clean = token.lowercase().replace(Regex("[^a-zA-Z0-9]"), "")
+                                val clean = token.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
                                 val isMatched = spokenList.contains(clean)
                                 withStyle(
                                     style = androidx.compose.ui.text.SpanStyle(
@@ -5417,7 +5307,7 @@ fun VoiceSyncSettingsDialog(
                                 contentColor = if (isCalibrating) Color.White else CosmicBackground
                             ),
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1.5f).height(38.dp)
+                            modifier = Modifier.weight(1.5f).height(48.dp)
                         ) {
                             Text(
                                 text = if (isCalibrating) "Stop Calibration" else "Start Calibration",
