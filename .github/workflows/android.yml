@@ -1,22 +1,22 @@
-name: Audit remediation validation
+name: Android production gates
 
 on:
   push:
     branches:
+      - main
       - audit/production-readiness-2026-09-06
-    paths:
-      - .ci-trigger
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  release-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,3 +44,6 @@ jobs:
 
       - name: Assemble release
         run: ./gradlew assembleRelease --stacktrace
+
+      - name: Bundle release
+        run: ./gradlew bundleRelease --stacktrace

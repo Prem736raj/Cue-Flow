@@ -26,6 +26,8 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,6 +96,62 @@ fun HomeScreen(
     var showOverlayPermissionExplainForScript by remember { mutableStateOf<Script?>(null) }
     var isPlaybackPracticeMode by remember { mutableStateOf(false) }
     var scriptToDelete by remember { mutableStateOf<Script?>(null) }
+    var pendingFloatingScript by remember { mutableStateOf<Script?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val script = pendingFloatingScript
+        pendingFloatingScript = null
+        if (!granted) {
+            android.widget.Toast.makeText(
+                context,
+                "Floating Mode will work, but its notification controls may be hidden.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+        if (script != null) {
+            val intent = Intent(context, FloatingPrompterService::class.java).apply {
+                putExtra("SCRIPT", script)
+            }
+            androidx.core.content.ContextCompat.startForegroundService(context, intent)
+            context.startActivity(Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            })
+        }
+    }
+
+    fun startFloatingService(script: Script) {
+        if (!Settings.canDrawOverlays(context)) {
+            showOverlayPermissionExplainForScript = script
+            return
+        }
+
+        val notificationPermissionNeeded =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                !prefs.getBoolean("notification_permission_prompted", false)
+
+        if (notificationPermissionNeeded) {
+            prefs.edit().putBoolean("notification_permission_prompted", true).apply()
+            pendingFloatingScript = script
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        val intent = Intent(context, FloatingPrompterService::class.java).apply {
+            putExtra("SCRIPT", script)
+        }
+        androidx.core.content.ContextCompat.startForegroundService(context, intent)
+        context.startActivity(Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        })
+    }
 
     Scaffold(
         modifier = modifier
@@ -455,22 +513,7 @@ fun HomeScreen(
                                         script = item,
                                         searchQuery = searchQuery,
                                         onPlayClick = { showModeSelectionForScript = it },
-                                        onFloatingQuickLaunch = { script ->
-                                            if (Settings.canDrawOverlays(context)) {
-                                                val intent = Intent(context, FloatingPrompterService::class.java).apply {
-                                                    putExtra("SCRIPT", script)
-                                                }
-                                                androidx.core.content.ContextCompat.startForegroundService(context, intent)
-                                                
-                                                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                                    addCategory(Intent.CATEGORY_HOME)
-                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                                }
-                                                context.startActivity(homeIntent)
-                                            } else {
-                                                showOverlayPermissionExplainForScript = script
-                                            }
-                                        },
+                                        onFloatingQuickLaunch = { script -> startFloatingService(script) },
                                         onEditClick = { onEditScript(item.id) },
                                         onDeleteClick = { scriptToDelete = item }
                                     )
@@ -495,20 +538,7 @@ fun HomeScreen(
             },
             onFloatingSelected = {
                 showModeSelectionForScript = null
-                if (Settings.canDrawOverlays(context)) {
-                    val intent = Intent(context, FloatingPrompterService::class.java).apply {
-                        putExtra("SCRIPT", script)
-                    }
-                    androidx.core.content.ContextCompat.startForegroundService(context, intent)
-                    
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(homeIntent)
-                } else {
-                    showOverlayPermissionExplainForScript = script
-                }
+                startFloatingService(script)
             }
         )
     }

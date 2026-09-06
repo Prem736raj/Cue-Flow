@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "3d50ab743324d0cf90e46584d12f3185",
+    "entities": [
+      {
+        "tableName": "scripts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `scrollSpeed` INTEGER NOT NULL, `fontSize` INTEGER NOT NULL, `isMirrored` INTEGER NOT NULL, `folderName` TEXT, `textColor` TEXT NOT NULL, `bgOpacity` REAL NOT NULL, `textAlignment` TEXT NOT NULL, `lineSpacing` TEXT NOT NULL, `textDirection` TEXT NOT NULL)",
+        "fields": [
+          { "fieldPath": "id", "columnName": "id", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "title", "columnName": "title", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "content", "columnName": "content", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "createdAt", "columnName": "createdAt", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "updatedAt", "columnName": "updatedAt", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "scrollSpeed", "columnName": "scrollSpeed", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "fontSize", "columnName": "fontSize", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "isMirrored", "columnName": "isMirrored", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "folderName", "columnName": "folderName", "affinity": "TEXT" },
+          { "fieldPath": "textColor", "columnName": "textColor", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "bgOpacity", "columnName": "bgOpacity", "affinity": "REAL", "notNull": true },
+          { "fieldPath": "textAlignment", "columnName": "textAlignment", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "lineSpacing", "columnName": "lineSpacing", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "textDirection", "columnName": "textDirection", "affinity": "TEXT", "notNull": true }
+        ],
+        "primaryKey": { "autoGenerate": true, "columnNames": ["id"] }
+      },
+      {
+        "tableName": "folders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          { "fieldPath": "name", "columnName": "name", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "createdAt", "columnName": "createdAt", "affinity": "INTEGER", "notNull": true }
+        ],
+        "primaryKey": { "autoGenerate": false, "columnNames": ["name"] }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3d50ab743324d0cf90e46584d12f3185')"
+    ]
+  }
+}

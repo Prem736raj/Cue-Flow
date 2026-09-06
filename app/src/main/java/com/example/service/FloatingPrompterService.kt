@@ -80,16 +80,21 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
     companion object {
         const val ACTION_PLAY_PAUSE = "com.example.action.PLAY_PAUSE"
         const val ACTION_STOP = "com.example.action.STOP"
+        const val ACTION_REQUEST_VOICE_SYNC_PERMISSION = "com.example.action.REQUEST_VOICE_SYNC_PERMISSION"
+        const val ACTION_ENABLE_VOICE_SYNC = "com.example.action.ENABLE_VOICE_SYNC"
+        const val ACTION_DISABLE_VOICE_SYNC = "com.example.action.DISABLE_VOICE_SYNC"
         const val CHANNEL_ID = "cueflow_floating_channel"
         const val NOTIFICATION_ID = 1010
 
         val isPlayingState = mutableStateOf(false)
+        val voiceSyncEnableRequest = mutableIntStateOf(0)
         var isServiceRunning = false
     }
 
     private lateinit var windowManager: WindowManager
     private var composeView: ComposeView? = null
     private var params = WindowManager.LayoutParams()
+    private var microphoneForegroundActive = false
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
@@ -117,7 +122,6 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        showNotification()
         val action = intent?.action
         if (action == ACTION_PLAY_PAUSE) {
             isPlayingState.value = !isPlayingState.value
@@ -126,7 +130,23 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
         } else if (action == ACTION_STOP) {
             stopSelf()
             return START_NOT_STICKY
+        } else if (action == ACTION_ENABLE_VOICE_SYNC) {
+            if (hasMicrophonePermission()) {
+                // Android 14+ requires the microphone FGS type to be active before
+                // speech recognition starts from the floating overlay.
+                microphoneForegroundActive = true
+                showNotification()
+                voiceSyncEnableRequest.intValue += 1
+            }
+            return START_NOT_STICKY
+        } else if (action == ACTION_DISABLE_VOICE_SYNC) {
+            microphoneForegroundActive = false
+            showNotification()
+            return START_NOT_STICKY
         }
+
+        microphoneForegroundActive = false
+        showNotification()
 
         val script = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent?.getSerializableExtra("SCRIPT", Script::class.java)
@@ -194,14 +214,15 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
             .build()
 
-        val hasMicrophonePermission = androidx.core.content.ContextCompat.checkSelfPermission(
-            this,
-            android.Manifest.permission.RECORD_AUDIO
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasMicrophonePermission = hasMicrophonePermission()
+
+        if (!hasMicrophonePermission) {
+            microphoneForegroundActive = false
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             var fgsType = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            if (hasMicrophonePermission) {
+            if (microphoneForegroundActive && hasMicrophonePermission) {
                 fgsType = fgsType or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
             startForeground(NOTIFICATION_ID, notification, fgsType)
@@ -209,6 +230,11 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
             startForeground(NOTIFICATION_ID, notification)
         }
     }
+
+    private fun hasMicrophonePermission(): Boolean = androidx.core.content.ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -334,6 +360,7 @@ class FloatingPrompterService : Service(), LifecycleOwner, SavedStateRegistryOwn
             stopForeground(true)
         }
         isServiceRunning = false
+        microphoneForegroundActive = false
         isPlayingState.value = false
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
@@ -349,6 +376,10 @@ fun FloatingPrompterUI(
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("cueflow_prefs", android.content.Context.MODE_PRIVATE) }
+    val hasMicrophonePermission = androidx.core.content.ContextCompat.checkSelfPermission(
+        context,
+        android.Manifest.permission.RECORD_AUDIO
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberLazyListState()
     val lines = remember(script.content) {
@@ -560,7 +591,10 @@ fun FloatingPrompterUI(
         }
     }
 
-    var isVoiceSyncActive by remember { mutableStateOf(prefs.getBoolean("voice_sync_enabled_${script.id}", false)) }
+    // Floating Voice Sync must be enabled by an explicit user action in this
+    // session. This prevents a persisted preference from starting microphone
+    // recognition before the service has been promoted to the microphone FGS type.
+    var isVoiceSyncActive by remember { mutableStateOf(false) }
     var voiceSensitivity by remember { mutableIntStateOf(prefs.getInt("voice_sync_sensitivity_${script.id}", prefs.getInt("voice_sync_sensitivity", 1))) }
     var voicePauseThreshold by remember { mutableIntStateOf(prefs.getInt("voice_sync_pause_threshold_${script.id}", prefs.getInt("voice_sync_pause_threshold", 1))) }
     var voiceMaxSpeedLimit by remember { mutableIntStateOf(prefs.getInt("voice_sync_max_limit_${script.id}", prefs.getInt("voice_sync_max_limit", 0))) }
@@ -571,6 +605,51 @@ fun FloatingPrompterUI(
     var lastMatchTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var isNoisyEnvironment by remember { mutableStateOf(false) }
     var noiseThresholdCounter by remember { mutableIntStateOf(0) }
+
+    val voiceSyncEnableRequest = FloatingPrompterService.voiceSyncEnableRequest.intValue
+
+    fun sendVoiceSyncServiceAction(action: String) {
+        val intent = android.content.Intent(context, FloatingPrompterService::class.java).apply {
+            this.action = action
+        }
+        context.startService(intent)
+    }
+
+    fun requestVoiceSyncPermission() {
+        micErrorText = "Open CueFlow to allow microphone access for Voice Sync."
+        val intent = android.content.Intent(context, com.example.MainActivity::class.java).apply {
+            action = FloatingPrompterService.ACTION_REQUEST_VOICE_SYNC_PERMISSION
+            addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+        }
+        runCatching { context.startActivity(intent) }
+            .onFailure { micErrorText = "Open CueFlow to allow microphone access for Voice Sync." }
+    }
+
+    LaunchedEffect(voiceSyncEnableRequest) {
+        if (voiceSyncEnableRequest > 0) {
+            if (hasMicrophonePermission) {
+                isVoiceSyncActive = true
+                micErrorText = null
+                prefs.edit().putBoolean("voice_sync_enabled_${script.id}", true).apply()
+            } else {
+                isVoiceSyncActive = false
+                micErrorText = "Microphone permission is required for Voice Sync."
+            }
+        }
+    }
+
+    LaunchedEffect(isVoiceSyncActive, hasMicrophonePermission) {
+        if (isVoiceSyncActive && !hasMicrophonePermission) {
+            isVoiceSyncActive = false
+            prefs.edit().putBoolean("voice_sync_enabled_${script.id}", false).apply()
+            sendVoiceSyncServiceAction(FloatingPrompterService.ACTION_DISABLE_VOICE_SYNC)
+            micErrorText = "Microphone permission is required for Voice Sync."
+        }
+    }
 
     LaunchedEffect(scrollState.firstVisibleItemIndex) {
         if (!isVoiceSyncActive) {
@@ -1736,13 +1815,17 @@ fun FloatingPrompterUI(
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Text(
-                                        text = "Microphone is busy/unavailable (another app may be recording).",
+                                        text = micErrorText ?: "Microphone is busy/unavailable.",
                                         color = Color.White,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Click to fall back to manual speed control.",
+                                        text = if (micErrorText?.startsWith("Open CueFlow") == true) {
+                                            "Grant permission in CueFlow, then enable Voice Sync again."
+                                        } else {
+                                            "Click to fall back to manual speed control."
+                                        },
                                         color = Color.White.copy(alpha = 0.8f),
                                         fontSize = 10.sp
                                     )
@@ -1788,9 +1871,17 @@ fun FloatingPrompterUI(
                                 )
                                 IconButton(
                                     onClick = {
-                                        isVoiceSyncActive = !isVoiceSyncActive
-                                        micErrorText = null
-                                        prefs.edit().putBoolean("voice_sync_enabled_${script.id}", isVoiceSyncActive).apply()
+                                        if (isVoiceSyncActive) {
+                                            isVoiceSyncActive = false
+                                            micErrorText = null
+                                            prefs.edit().putBoolean("voice_sync_enabled_${script.id}", false).apply()
+                                            sendVoiceSyncServiceAction(FloatingPrompterService.ACTION_DISABLE_VOICE_SYNC)
+                                        } else if (hasMicrophonePermission) {
+                                            micErrorText = null
+                                            sendVoiceSyncServiceAction(FloatingPrompterService.ACTION_ENABLE_VOICE_SYNC)
+                                        } else {
+                                            requestVoiceSyncPermission()
+                                        }
                                         onInteraction()
                                     },
                                     modifier = Modifier

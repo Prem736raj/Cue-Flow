@@ -1,10 +1,17 @@
 package com.example
 
+import android.Manifest
 import android.os.Bundle
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
+import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
+import android.net.Uri
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -23,6 +30,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.data.Script
 import com.example.ui.ScriptViewModel
 import com.example.ui.screens.EditorScreen
 import com.example.ui.screens.HomeScreen
@@ -34,6 +42,38 @@ import com.example.util.HardwareButtonController
 class MainActivity : ComponentActivity() {
     private var isLongPressTriggered = false
     private var lastPlayPauseClickTime = 0L
+    private var pendingQuickFloatingScript: Script? = null
+
+    private val voiceSyncPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            enableFloatingVoiceSync()
+        } else {
+            Toast.makeText(
+                this,
+                "Voice Sync stays off until microphone access is allowed.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        val script = pendingQuickFloatingScript
+        pendingQuickFloatingScript = null
+        if (!isGranted) {
+            Toast.makeText(
+                this,
+                "Floating Mode will work, but its notification controls may be hidden.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+        if (script != null) {
+            launchFloatingService(script)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +89,9 @@ class MainActivity : ComponentActivity() {
             startQuickFloatingMode()
             return
         }
+
+        val shouldRequestVoiceSyncPermission =
+            intent?.action == com.example.service.FloatingPrompterService.ACTION_REQUEST_VOICE_SYNC_PERMISSION
 
         setupDynamicShortcuts()
         
@@ -216,6 +259,35 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        if (shouldRequestVoiceSyncPermission) {
+            window.decorView.post { requestVoiceSyncPermission() }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == com.example.service.FloatingPrompterService.ACTION_REQUEST_VOICE_SYNC_PERMISSION) {
+            window.decorView.post { requestVoiceSyncPermission() }
+        }
+    }
+
+    private fun requestVoiceSyncPermission() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        ) {
+            enableFloatingVoiceSync()
+        } else {
+            voiceSyncPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun enableFloatingVoiceSync() {
+        val intent = Intent(this, com.example.service.FloatingPrompterService::class.java).apply {
+            action = com.example.service.FloatingPrompterService.ACTION_ENABLE_VOICE_SYNC
+        }
+        startService(intent)
     }
 
     private fun setupDynamicShortcuts() {
@@ -255,25 +327,46 @@ class MainActivity : ComponentActivity() {
                 createdAt = System.currentTimeMillis()
             )
             
-            if (android.provider.Settings.canDrawOverlays(this@MainActivity)) {
-                val serviceIntent = Intent(this@MainActivity, com.example.service.FloatingPrompterService::class.java).apply {
-                    putExtra("SCRIPT", scriptToLaunch)
-                }
-                androidx.core.content.ContextCompat.startForegroundService(this@MainActivity, serviceIntent)
-                
-                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                startActivity(homeIntent)
-            } else {
-                val mainIntent = Intent(this@MainActivity, MainActivity::class.java).apply {
-                    action = Intent.ACTION_MAIN
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                }
-                startActivity(mainIntent)
-            }
+            launchFloatingService(scriptToLaunch)
         }
+    }
+
+    private fun launchFloatingService(script: Script) {
+        if (!Settings.canDrawOverlays(this)) {
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+            )
+            return
+        }
+
+        val prefs = getSharedPreferences("cueflow_prefs", MODE_PRIVATE)
+        val notificationPermissionNeeded =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED &&
+                !prefs.getBoolean("notification_permission_prompted", false)
+
+        if (notificationPermissionNeeded) {
+            prefs.edit().putBoolean("notification_permission_prompted", true).apply()
+            pendingQuickFloatingScript = script
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        val serviceIntent = Intent(this, com.example.service.FloatingPrompterService::class.java).apply {
+            putExtra("SCRIPT", script)
+        }
+        ContextCompat.startForegroundService(this, serviceIntent)
+
+        startActivity(Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        })
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {

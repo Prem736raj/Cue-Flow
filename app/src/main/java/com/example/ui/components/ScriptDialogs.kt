@@ -1573,7 +1573,7 @@ fun TeleprompterPlaybackDialog(
                         }
                         
                         Text(
-                            text = "[ CAMERA FEED DISABLED - SIMULATION ACTIVE ]",
+                            text = "Camera permission is required for Record Video mode.",
                             color = Color.White.copy(alpha = 0.22f),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,

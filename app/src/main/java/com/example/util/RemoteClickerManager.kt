@@ -2,6 +2,7 @@ package com.example.util
 
 import android.content.Context
 import android.hardware.input.InputManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.InputDevice
@@ -97,7 +98,8 @@ object RemoteClickerManager {
     }
 
     private fun isSupportedExternalRemote(device: InputDevice): Boolean {
-        if (device.isVirtual || !device.isExternal) return false
+        if (device.isVirtual) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !device.isExternal) return false
         val sources = device.sources
         val keyboard = sources and InputDevice.SOURCE_KEYBOARD == InputDevice.SOURCE_KEYBOARD
         val dpad = sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
