@@ -14,7 +14,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+// Robolectric's API 36 preinstrumented jar requires JDK 21. Keep JVM tests
+// compatible with the project's JDK 17 CI baseline while production compiles
+// and targets API 36.
+@Config(sdk = [35])
 class ExampleRobolectricTest {
 
     private lateinit var context: Context
